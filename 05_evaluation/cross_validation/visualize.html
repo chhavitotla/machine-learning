@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K-Fold Cross-Validation — One Score Is Luck, K Scores Are Evidence</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .panes { display: flex; gap: 14px; margin-top: 14px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button.toggled { background: linear-gradient(135deg, #f72585, #b5179e); border: none; color: #fff; box-shadow: 0 4px 18px rgba(247,37,133,0.3); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 05 evaluation</div>
+<h1>K-Fold Cross-Validation</h1>
+<p class="subtitle">Sixty real samples, one real logistic regression. The strip is your dataset cut into <b>K folds</b>; hit <b>Play</b> and each fold takes its turn as held-out validation while the model trains live on the rest. Every fold lands one score bar — and after K of them you get the prize a single split can't give you: a <b>mean and an error bar</b>. Then toggle <b>Single split</b> and watch one-shot scores swing on identical data.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <div class="chart-label" id="stripLabel">the dataset · 60 samples · cut into 5 folds</div>
+    <canvas id="strip" width="580" height="74"></canvas>
+    <div class="panes">
+      <div>
+        <div class="chart-label">the model · logistic regression, trained live</div>
+        <canvas id="scatter" width="282" height="252"></canvas>
+      </div>
+      <div>
+        <div class="chart-label" id="resultsLabel">fold scores · mean ± std</div>
+        <canvas id="results" width="282" height="252"></canvas>
+      </div>
+    </div>
+    <div class="caption" id="capt">each run: train on the bright squares, grade on the outlined fold — no sample ever scores a model that saw it</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play all folds</button>
+      <button id="stepBtn">Run fold</button>
+      <button id="splitBtn">Single split</button>
+      <button id="shufBtn">🎲 Shuffle data</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>K (number of folds) <span class="val" id="kVal">5</span></label>
+        <input type="range" id="k" min="2" max="10" step="1" value="5">
+      </div>
+      <div class="slider-row">
+        <label>Play speed <span class="val" id="spdVal">1×</span></label>
+        <input type="range" id="spd" min="1" max="8" step="1" value="3">
+      </div>
+      <div class="hint">Run all K folds, note the <b>mean ± std</b> — then 🎲 shuffle and run again: the mean barely moves. Now toggle <b>Single split</b> and run a handful: each bar is a fresh random 75/25 split, and the swing between them is the luck you'd be reporting as "the" score.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat wide"><div class="k" id="meanK">CV estimate (mean of folds)</div><div class="v" style="color:var(--green);font-size:22px" id="meanV">—</div></div>
+        <div class="stat"><div class="k">std of scores</div><div class="v" style="color:var(--amber)" id="stdV">—</div></div>
+        <div class="stat"><div class="k" id="progK">folds done</div><div class="v" style="color:var(--cyan)" id="progV">0 / 5</div></div>
+        <div class="stat"><div class="k">last score</div><div class="v" style="color:var(--magenta)" id="lastV">—</div></div>
+        <div class="stat"><div class="k">train / val sizes</div><div class="v" id="sizeV">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// K-FOLD CV: partition n samples into K folds. For fold k,
+// train a model on the OTHER K-1 folds, score it on fold k.
+// Every sample is validated exactly once, by a model that
+// never saw it. The K scores give you a mean (the estimate)
+// AND a std (the uncertainty) — a single train/test split
+// gives you one number and no idea how lucky it was.
+// ============================================================
+
+const strip = document.getElementById('strip'), sctx = strip.getContext('2d');
+const scat = document.getElementById('scatter'), pctx = scat.getContext('2d');
+const res = document.getElementById('results'), rctx = res.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const S = hidpi(strip), P = hidpi(scat), R = hidpi(res);
+
+// --- seeded RNG (mulberry32) + Box–Muller, so 🎲 is reproducible per seed ---
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(rng) {
+  const u1 = Math.max(rng(), 1e-9), u2 = rng();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+let seed = 17;
+
+// --- state ---
+const N = 60;
+let data = [];        // {x, y, cls} — two overlapping 2D gaussian blobs
+let perm = [];        // strip position -> data index; shuffling re-deals the folds
+let K = 5;
+let foldScores = [];  // completed scores this run (fold scores, or single-split scores)
+let curFold = 0;      // next fold to run (cv mode)
+let model = null;     // last trained {w1, w2, b}
+let valSet = new Set();   // strip positions currently held out (for highlighting)
+let singleMode = false;   // contrast mode: fresh random 75/25 split per run
+let lastCV = null;        // remembered {mean, std} from the last completed CV run
+let playing = false, lastStep = 0;
+
+function makeData() {
+  const rng = mulberry32(seed);
+  data = [];
+  for (let i = 0; i < N; i++) {
+    const cls = i % 2;          // alternate so classes are balanced
+    const cx = cls ? 0.75 : -0.75, cy = cls ? 0.75 : -0.75;
+    data.push({ x: cx + 0.85 * gauss(rng), y: cy + 0.85 * gauss(rng), cls });
+  }
+  // the SHUFFLE happens once, before any fold is cut — this is the honest order
+  perm = data.map((_, i) => i);
+  for (let i = N - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [perm[i], perm[j]] = [perm[j], perm[i]];
+  }
+}
+
+// fold f = contiguous slice of the (already shuffled) strip
+function foldRange(f) {
+  return [Math.round(f * N / K), Math.round((f + 1) * N / K)];
+}
+
+// --- the actual model: logistic regression by gradient descent ---
+// sigmoid(w1*x + w2*y + b); gradient of log-loss is (p - y) * input.
+// 300 full-batch steps on ≤ 60 points: ~instant, but genuinely trained.
+function trainLogreg(train) {
+  let w1 = 0, w2 = 0, b = 0;
+  const lr = 0.5, n = train.length;
+  for (let s = 0; s < 300; s++) {
+    let g1 = 0, g2 = 0, gb = 0;
+    for (const p of train) {
+      const pr = 1 / (1 + Math.exp(-(w1 * p.x + w2 * p.y + b)));
+      const d = pr - p.cls;
+      g1 += d * p.x; g2 += d * p.y; gb += d;
+    }
+    w1 -= lr * g1 / n; w2 -= lr * g2 / n; b -= lr * gb / n;
+  }
+  return { w1, w2, b };
+}
+function accuracy(m, pts) {
+  let hit = 0;
+  for (const p of pts) if ((m.w1 * p.x + m.w2 * p.y + m.b > 0) === (p.cls === 1)) hit++;
+  return hit / pts.length;
+}
+
+function meanStd(xs) {
+  const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+  if (xs.length < 2) return { m, sd: 0 };
+  const v = xs.reduce((a, x) => a + (x - m) ** 2, 0) / (xs.length - 1);
+  return { m, sd: Math.sqrt(v) };
+}
+
+// --- one step of the protocol ---
+function runNext() {
+  if (singleMode) {
+    // CONTRAST mode: a fresh random 75/25 split each time — the one-number protocol
+    const idx = data.map((_, i) => i);
+    for (let i = N - 1; i > 0; i--) {                 // unseeded shuffle: every run is new luck
+      const j = Math.floor(Math.random() * (i + 1));
+      [idx[i], idx[j]] = [idx[j], idx[i]];
+    }
+    const cut = Math.round(N * 0.75);
+    const train = idx.slice(0, cut).map(i => data[i]);
+    const val = idx.slice(cut).map(i => data[i]);
+    valSet = new Set(perm.map((d, pos) => idx.slice(cut).includes(d) ? pos : -1).filter(p => p >= 0));
+    model = trainLogreg(train);
+    foldScores.push(accuracy(model, val));
+    if (foldScores.length > 12) foldScores.shift();   // keep the chart readable
+    if (playing && foldScores.length >= 10) stopPlay();
+    return;
+  }
+  // CV mode: fold curFold is validation, the other K-1 folds are training
+  if (curFold >= K) { resetRun(); }                   // run finished → start a fresh pass
+  const [lo, hi] = foldRange(curFold);
+  const train = [], val = [];
+  for (let pos = 0; pos < N; pos++) {
+    (pos >= lo && pos < hi ? val : train).push(data[perm[pos]]);
+  }
+  valSet = new Set(Array.from({ length: hi - lo }, (_, i) => lo + i));
+  model = trainLogreg(train);                         // trained ONLY on the K-1 folds
+  foldScores.push(accuracy(model, val));              // graded ONLY on the held-out fold
+  curFold++;
+  if (curFold >= K) {
+    lastCV = meanStd(foldScores);                     // remember, to contrast with single splits
+    stopPlay();
+  }
+}
+
+function resetRun() { foldScores = []; curFold = 0; valSet = new Set(); model = null; }
+function stopPlay() { playing = false; playBtn.textContent = singleMode ? '▶ Play 10 splits' : '▶ Play all folds'; }
+
+// --- drawing: the dataset strip ---
+function drawStrip() {
+  sctx.clearRect(0, 0, S.w, S.h);
+  const pad = 6, gap = 2, cell = (S.w - 2 * pad - (N - 1) * gap) / N;
+  for (let pos = 0; pos < N; pos++) {
+    const d = data[perm[pos]];
+    const x = pad + pos * (cell + gap);
+    const isVal = valSet.has(pos);
+    const isTrain = valSet.size > 0 && !isVal && !singleMode;
+    // fill = class color; brightness = role (validation glows, training is lit, idle is dim)
+    const base = d.cls ? '247,37,133' : '76,201,240';
+    sctx.fillStyle = isVal ? `rgba(${base},0.95)` : isTrain ? `rgba(${base},0.55)` : `rgba(${base},${valSet.size ? 0.55 : 0.3})`;
+    if (isVal) { sctx.save(); sctx.shadowColor = '#fbbf24'; sctx.shadowBlur = 8; }
+    sctx.fillRect(x, 18, cell, 30);
+    if (isVal) {
+      sctx.strokeStyle = '#fbbf24'; sctx.lineWidth = 2;
+      sctx.strokeRect(x - 0.5, 16.5, cell + 1, 33);
+      sctx.restore();
+    }
+  }
+  // fold boundary ticks + labels (cv mode only — single splits aren't folds)
+  if (!singleMode) {
+    sctx.fillStyle = '#5d5d72'; sctx.font = '600 9px monospace'; sctx.textAlign = 'center';
+    for (let f = 0; f < K; f++) {
+      const [lo, hi] = foldRange(f);
+      const x0 = pad + lo * (cell + gap), x1 = pad + hi * (cell + gap) - gap;
+      sctx.fillText('fold ' + (f + 1), (x0 + x1) / 2, 62);
+      if (f > 0) {
+        sctx.strokeStyle = 'rgba(236,237,242,0.25)'; sctx.lineWidth = 1;
+        sctx.beginPath(); sctx.moveTo(x0 - gap / 2, 10); sctx.lineTo(x0 - gap / 2, 54); sctx.stroke();
+      }
+    }
+  } else {
+    sctx.fillStyle = '#5d5d72'; sctx.font = '600 9px monospace'; sctx.textAlign = 'center';
+    sctx.fillText('amber outline = this split’s random 25% test set', S.w / 2, 62);
+  }
+}
+
+// --- drawing: the 2D scatter + learned decision boundary ---
+const PX = v => P.w / 2 + v * (P.w / 6.6);
+const PY = v => P.h / 2 - v * (P.h / 6.6);
+function drawScatter() {
+  pctx.clearRect(0, 0, P.w, P.h);
+  pctx.fillStyle = '#101018'; pctx.fillRect(0, 0, P.w, P.h);
+  // axes through the origin
+  pctx.strokeStyle = 'rgba(255,255,255,0.05)'; pctx.lineWidth = 1;
+  pctx.beginPath(); pctx.moveTo(PX(-3.2), PY(0)); pctx.lineTo(PX(3.2), PY(0)); pctx.stroke();
+  pctx.beginPath(); pctx.moveTo(PX(0), PY(-3.2)); pctx.lineTo(PX(0), PY(3.2)); pctx.stroke();
+  // decision boundary: the line where w1*x + w2*y + b = 0
+  if (model && Math.abs(model.w2) > 1e-9) {
+    pctx.save(); pctx.shadowColor = 'rgba(74,222,128,0.6)'; pctx.shadowBlur = 8;
+    pctx.strokeStyle = '#4ade80'; pctx.lineWidth = 2;
+    pctx.beginPath();
+    pctx.moveTo(PX(-3.3), PY((-model.b - model.w1 * -3.3) / model.w2));
+    pctx.lineTo(PX(3.3), PY((-model.b - model.w1 * 3.3) / model.w2));
+    pctx.stroke(); pctx.restore();
+  }
+  // points: filled = training, amber ring = held-out validation
+  const valIdx = new Set(Array.from(valSet, pos => perm[pos]));
+  data.forEach((d, i) => {
+    const held = valIdx.has(i);
+    pctx.fillStyle = d.cls ? 'rgba(247,37,133,0.9)' : 'rgba(76,201,240,0.9)';
+    pctx.beginPath(); pctx.arc(PX(d.x), PY(d.y), held ? 4 : 3, 0, Math.PI * 2); pctx.fill();
+    if (held) {
+      pctx.strokeStyle = '#fbbf24'; pctx.lineWidth = 1.6;
+      pctx.beginPath(); pctx.arc(PX(d.x), PY(d.y), 6.2, 0, Math.PI * 2); pctx.stroke();
+    }
+  });
+}
+
+// --- drawing: the score bars + mean ± std band ---
+const RPAD = 30;
+const RY = v => R.h - 26 - v * (R.h - 50);
+function drawResults() {
+  rctx.clearRect(0, 0, R.w, R.h);
+  rctx.fillStyle = '#101018'; rctx.fillRect(0, 0, R.w, R.h);
+  // y gridlines at 0, .5, 1
+  rctx.font = '9px monospace'; rctx.textAlign = 'right';
+  for (const g of [0, 0.5, 1]) {
+    rctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    rctx.beginPath(); rctx.moveTo(RPAD, RY(g)); rctx.lineTo(R.w - 8, RY(g)); rctx.stroke();
+    rctx.fillStyle = '#5d5d72'; rctx.fillText(g.toFixed(1), RPAD - 4, RY(g) + 3);
+  }
+  const slots = singleMode ? 12 : K;
+  const bw = Math.min(34, (R.w - RPAD - 16) / slots - 6);
+  // one bar per completed score — appended live as folds finish
+  foldScores.forEach((s, i) => {
+    const x = RPAD + 8 + i * (bw + 6);
+    const grad = rctx.createLinearGradient(0, RY(s), 0, RY(0));
+    grad.addColorStop(0, singleMode ? 'rgba(247,37,133,0.9)' : 'rgba(76,201,240,0.9)');
+    grad.addColorStop(1, singleMode ? 'rgba(247,37,133,0.25)' : 'rgba(67,97,238,0.25)');
+    rctx.fillStyle = grad;
+    rctx.fillRect(x, RY(s), bw, RY(0) - RY(s));
+    rctx.fillStyle = '#9a9ab0'; rctx.textAlign = 'center'; rctx.font = '9px monospace';
+    rctx.fillText(s.toFixed(2), x + bw / 2, RY(s) - 4);
+  });
+  // mean line + std band: the score is the line, the uncertainty is the band
+  if (foldScores.length >= 2) {
+    const { m, sd } = meanStd(foldScores);
+    rctx.fillStyle = 'rgba(74,222,128,0.12)';
+    rctx.fillRect(RPAD, RY(m + sd), R.w - RPAD - 8, RY(m - sd) - RY(m + sd));
+    rctx.save(); rctx.shadowColor = 'rgba(74,222,128,0.7)'; rctx.shadowBlur = 6;
+    rctx.strokeStyle = '#4ade80'; rctx.lineWidth = 2;
+    rctx.beginPath(); rctx.moveTo(RPAD, RY(m)); rctx.lineTo(R.w - 8, RY(m)); rctx.stroke();
+    rctx.restore();
+    rctx.fillStyle = '#4ade80'; rctx.textAlign = 'left'; rctx.font = '600 10px monospace';
+    rctx.fillText('mean ' + m.toFixed(3), RPAD + 2, RY(m) - 5);
+  }
+  // in single-split mode, ghost in the last CV mean so the contrast is visible
+  if (singleMode && lastCV) {
+    rctx.setLineDash([4, 4]); rctx.strokeStyle = 'rgba(76,201,240,0.7)'; rctx.lineWidth = 1.5;
+    rctx.beginPath(); rctx.moveTo(RPAD, RY(lastCV.m)); rctx.lineTo(R.w - 8, RY(lastCV.m)); rctx.stroke();
+    rctx.setLineDash([]);
+    rctx.fillStyle = '#4cc9f0'; rctx.textAlign = 'right'; rctx.font = '600 9px monospace';
+    rctx.fillText('CV mean ' + lastCV.m.toFixed(3), R.w - 10, RY(lastCV.m) - 4);
+  }
+}
+
+// --- readouts + narration ---
+function updateReadout() {
+  const done = !singleMode && curFold >= K && foldScores.length === K;
+  const { m, sd } = foldScores.length ? meanStd(foldScores) : { m: NaN, sd: NaN };
+
+  document.getElementById('meanK').textContent = singleMode ? 'mean of single splits' : 'CV estimate (mean of folds)';
+  document.getElementById('meanV').textContent = foldScores.length ? m.toFixed(3) : '—';
+  document.getElementById('stdV').textContent = foldScores.length >= 2 ? '± ' + sd.toFixed(3) : '—';
+  document.getElementById('progK').textContent = singleMode ? 'splits run' : 'folds done';
+  document.getElementById('progV').textContent = singleMode ? String(foldScores.length) : `${Math.min(curFold, K)} / ${K}`;
+  document.getElementById('lastV').textContent = foldScores.length ? foldScores[foldScores.length - 1].toFixed(3) : '—';
+  const nv = valSet.size;
+  document.getElementById('sizeV').textContent = nv ? `${N - nv} / ${nv}` : '—';
+
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = done
+    ? '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ all folds done — every sample validated exactly once</span>'
+    : playing ? '<span class="badge" style="background:rgba(76,201,240,0.12);color:var(--cyan)">running…</span>' : '';
+
+  const ann = document.getElementById('annotation');
+  if (singleMode) {
+    ann.style.borderLeftColor = 'var(--magenta)';
+    if (foldScores.length < 2) {
+      ann.innerHTML = '<b>Single-split mode.</b> Each run is the naive protocol: one random 75/25 split, one model, one number — and no clue how lucky that number was. Run several and watch the bars disagree on <i>identical data</i>.';
+    } else {
+      const lo = Math.min(...foldScores), hi = Math.max(...foldScores);
+      ann.innerHTML = `<b>Same data, ${foldScores.length} different answers.</b> Single-split scores span <b>${lo.toFixed(2)} → ${hi.toFixed(2)}</b> — a ${((hi - lo) * 100).toFixed(0)}-point swing that is pure split luck.${lastCV ? ` The dashed line is the CV mean (${lastCV.m.toFixed(3)} ± ${lastCV.sd.toFixed(3)}): one stable number <i>with</i> an error bar, instead of a lottery ticket.` : ' Toggle back and run CV to see the stable alternative.'}`;
+    }
+  } else if (done) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>CV complete: ${m.toFixed(3)} ± ${sd.toFixed(3)}.</b> <b>Your score is the mean; your uncertainty is the std.</b> The fold scores disagree — small validation sets are noisy — but averaging K honest measurements cancels the split luck. 🎲 shuffle and rerun: the bars reshuffle, the mean barely moves.`;
+  } else if (foldScores.length === 0) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Ready.</b> The strip is the dataset, already shuffled once and cut into <b>${K} folds</b>. Hit <b>Run fold</b>: fold 1 goes behind glass (amber), the model trains on the other ${K - 1} folds, then gets graded on data it never saw.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--amber)';
+    const s = foldScores[foldScores.length - 1];
+    ann.innerHTML = `<b>Fold ${curFold} of ${K}: accuracy ${s.toFixed(3)}.</b> The model trained on ${N - valSet.size} samples (300 gradient steps, the green boundary) and was scored on the ${valSet.size} held-out amber samples. ${K - curFold} fold${K - curFold === 1 ? '' : 's'} to go — each one a fresh model, a fresh exam.`;
+  }
+}
+
+// --- controls ---
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  if (playing) { stopPlay(); return; }
+  if (singleMode) foldScores = [];                   // a play = a fresh batch of 10 splits
+  else if (curFold >= K) resetRun();
+  playing = true; lastStep = 0;
+  playBtn.textContent = '⏸ Pause';
+};
+document.getElementById('stepBtn').onclick = () => { stopPlay(); runNext(); };
+document.getElementById('shufBtn').onclick = () => {
+  seed = (seed * 1103515245 + 12345) % 2147483647;   // new deal → new fold assignment
+  makeData(); resetRun(); stopPlay();
+};
+
+const splitBtn = document.getElementById('splitBtn');
+splitBtn.onclick = () => {
+  singleMode = !singleMode;
+  splitBtn.classList.toggle('toggled', singleMode);
+  resetRun(); stopPlay();
+  document.getElementById('stripLabel').textContent = singleMode
+    ? 'the dataset · 60 samples · one random split per run'
+    : `the dataset · 60 samples · cut into ${K} folds`;
+  document.getElementById('resultsLabel').textContent = singleMode
+    ? 'single-split scores · pure split luck' : 'fold scores · mean ± std';
+  document.getElementById('capt').textContent = singleMode
+    ? 'the naive protocol: a fresh random 75/25 split each run — same data, a different score every time'
+    : 'each run: train on the bright squares, grade on the outlined fold — no sample ever scores a model that saw it';
+};
+
+const kSlider = document.getElementById('k');
+kSlider.oninput = () => {
+  K = parseInt(kSlider.value, 10);
+  document.getElementById('kVal').textContent = K;
+  if (!singleMode) document.getElementById('stripLabel').textContent = `the dataset · 60 samples · cut into ${K} folds`;
+  resetRun(); stopPlay();                            // K changed → the partition changed → start over
+};
+const spdSlider = document.getElementById('spd');
+spdSlider.oninput = () => { document.getElementById('spdVal').textContent = spdSlider.value + '×'; };
+
+// --- render loop: auto-play paces runNext() by the speed slider ---
+function frame(t) {
+  if (playing) {
+    const delay = 1600 / parseInt(spdSlider.value, 10);   // 1× = one fold per 1.6s … 8× = blur
+    if (t - lastStep > delay) { lastStep = t; runNext(); }
+  }
+  drawStrip();
+  drawScatter();
+  drawResults();
+  updateReadout();
+  requestAnimationFrame(frame);
+}
+
+makeData();
+resetRun();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

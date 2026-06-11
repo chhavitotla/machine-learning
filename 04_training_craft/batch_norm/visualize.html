@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Batch Norm, Live — watch the distributions</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0f0f13;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    /* file-specific aliases: the two contenders */
+    --bn: var(--green);
+    --plain: var(--magenta);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(74,222,128,0.08), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8ffd2 60%, #7effb0);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 760px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .subtitle .g { color: var(--bn); font-weight: 600; } .subtitle .p { color: var(--plain); font-weight: 600; }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button.bn-toggle { width: 100%; font-size: 14px; padding: 12px; }
+  button.bn-on {
+    background: linear-gradient(135deg, #34d399, #15803d);
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(74,222,128,0.3);
+  }
+  button.bn-off {
+    background: linear-gradient(135deg, var(--magenta), #9d174d);
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(247,37,133,0.3);
+  }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 15px; font-weight: 650; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .legend { font-size: 11.5px; color: var(--dim); margin-top: 8px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 04 training craft</div>
+<h1>Batch Norm, Live</h1>
+<p class="subtitle">Two identical sigmoid MLPs (2→16→16→16→1), same initial weights, same mini-batch every step — <span class="g">one with batch norm</span>, <span class="p">one without</span>. The big panel shows what each hidden layer's sigmoid actually receives: without BN the deep distributions collapse into a spike or drift into the red saturation zones; <b>hit the toggle</b> and the BN net's view is pinned at mean ≈ 0, std ≈ 1, every layer, every step.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="hist" width="620" height="460"></canvas>
+    <div class="caption">Histograms of pre-activations (the values entering each sigmoid), batch × 16 units · red zones = |z| &gt; 4, where sigmoid's gradient ≈ 0</div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <button class="bn-toggle bn-on" id="bnToggle">Batch Norm: ON — showing BN net</button>
+      <div class="legend">Both nets always train; this picks which one the histograms show.</div>
+    </div>
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Train</button>
+      <button id="resetBtn">↺ Reset</button>
+    </div>
+    <div class="card">
+      <div class="slider-row">
+        <label>Learning rate α <span class="val" id="lrVal">1.00</span></label>
+        <input type="range" id="lr" min="-1.3" max="1.0" step="0.02" value="0">
+      </div>
+      <div class="slider-row">
+        <label>Batch size <span class="val" id="bsVal">32</span></label>
+        <input type="range" id="bs" min="1" max="6" step="1" value="5">
+      </div>
+      <div class="slider-row">
+        <label>Speed <span class="val" id="speedVal">30 steps/s</span></label>
+        <input type="range" id="speed" min="2" max="240" step="2" value="30">
+      </div>
+    </div>
+    <div class="card">
+      <div class="chart-label">Training loss (log scale)</div>
+      <canvas id="lossChart" width="276" height="120"></canvas>
+      <div class="legend"><span class="swatch" style="background:var(--bn); box-shadow:0 0 8px var(--bn)"></span>with BN&nbsp;&nbsp;<span class="swatch" style="background:var(--plain); box-shadow:0 0 8px var(--plain)"></span>without BN</div>
+    </div>
+    <div class="card">
+      <div class="chart-label">BN layer 1 — live internals (avg over 16 units)</div>
+      <div class="stat-grid">
+        <div class="stat"><div class="k">gamma γ̄</div><div class="v" style="color:var(--green)" id="sGamma">1.000</div></div>
+        <div class="stat"><div class="k">beta β̄</div><div class="v" style="color:var(--green)" id="sBeta">0.000</div></div>
+        <div class="stat"><div class="k">batch mean μ̄_B</div><div class="v" style="color:var(--cyan)" id="sMean">0.000</div></div>
+        <div class="stat"><div class="k">batch var σ̄²_B</div><div class="v" style="color:var(--cyan)" id="sVar">1.000</div></div>
+      </div>
+    </div>
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// BATCH NORM, LIVE — two networks, one controlled experiment.
+// Two copies of the same MLP (2-16-16-16-1, sigmoid), IDENTICAL
+// initial weights, IDENTICAL mini-batches — the only variable is
+// BN itself. Task: is a 2D point inside a circle?
+//
+// A deep SIGMOID net is the canonical BN victim (implementation.py
+// Demo 1): sigmoid's slope is ≤ 1/4, so the signal's spread shrinks
+// every layer until deep pre-activations are a spike at ~0; crank
+// the learning rate and the opposite failure appears — weights
+// inflate and distributions drift past |z|>4 where sigmoid is flat.
+// BN's one move kills both, per feature, every step:
+//   xhat = (x - batch_mean) / sqrt(batch_var + eps)
+//   y    = gamma * xhat + beta        (gamma, beta learned)
+// ============================================================
+
+const SIZES = [2, 16, 16, 16, 1];       // layer widths
+const NH = SIZES.length - 2;            // number of hidden (sigmoid) layers
+const SAT = 4;                          // |z| beyond this: sigmoid gradient < 0.02
+const ZLIM = 8, NBINS = 56;             // histogram window and resolution
+
+// --- deterministic RNG so Reset reproduces the exact same race ---
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let rng = mulberry32(7);
+function gauss() {                       // Box–Muller from two uniforms
+  return Math.sqrt(-2 * Math.log(rng() + 1e-12)) * Math.cos(2 * Math.PI * rng());
+}
+
+const sigmoid = z => 1 / (1 + Math.exp(-Math.max(-60, Math.min(60, z))));
+const zeros = n => new Array(n).fill(0);
+const mat = (r, c, f) => Array.from({ length: r }, () => Array.from({ length: c }, f));
+
+// --- batch norm layer: forward caches what backward needs ---
+function makeBN(d) {
+  return { gamma: new Array(d).fill(1), beta: zeros(d),
+           rmean: zeros(d), rvar: new Array(d).fill(1),
+           eps: 1e-5, mom: 0.1, mean: zeros(d), varr: zeros(d),
+           invstd: zeros(d), xhat: null };
+}
+function bnForward(bn, Z) {              // training mode: THIS batch's stats
+  const n = Z.length, d = Z[0].length, out = mat(n, d, () => 0);
+  bn.xhat = mat(n, d, () => 0);
+  for (let j = 0; j < d; j++) {
+    let m = 0; for (let i = 0; i < n; i++) m += Z[i][j]; m /= n;
+    let v = 0; for (let i = 0; i < n; i++) v += (Z[i][j] - m) ** 2; v /= n;
+    bn.mean[j] = m; bn.varr[j] = v;
+    bn.invstd[j] = 1 / Math.sqrt(v + bn.eps);
+    // exponential moving average -> what inference would use later
+    bn.rmean[j] += bn.mom * (m - bn.rmean[j]);
+    bn.rvar[j] += bn.mom * (v - bn.rvar[j]);
+    for (let i = 0; i < n; i++) {
+      bn.xhat[i][j] = (Z[i][j] - m) * bn.invstd[j];
+      out[i][j] = bn.gamma[j] * bn.xhat[i][j] + bn.beta[j];
+    }
+  }
+  return out;
+}
+// Backward through BN. Subtle and important: mu and var are FUNCTIONS
+// of every x in the batch, so dL/dx_i collects three terms — the direct
+// path, the path through mu, and the path through var. The compact form:
+//   dx_i = gamma*invstd/n * ( n*dy_i  -  sum(dy)  -  xhat_i * sum(dy*xhat) )
+// Note the batch-sum of dx is exactly 0: BN's output is invariant to
+// shifting its input, so gradients lose their mean component.
+function bnBackward(bn, dY, lr) {
+  const n = dY.length, d = dY[0].length, dX = mat(n, d, () => 0);
+  for (let j = 0; j < d; j++) {
+    let sDy = 0, sDyX = 0;
+    for (let i = 0; i < n; i++) { sDy += dY[i][j]; sDyX += dY[i][j] * bn.xhat[i][j]; }
+    const k = bn.gamma[j] * bn.invstd[j] / n;
+    for (let i = 0; i < n; i++)
+      dX[i][j] = k * (n * dY[i][j] - sDy - bn.xhat[i][j] * sDyX);
+    bn.gamma[j] -= lr * sDyX;            // dL/dgamma = sum(dy * xhat)
+    bn.beta[j] -= lr * sDy;              // dL/dbeta  = sum(dy)
+  }
+  return dX;
+}
+
+// --- the MLP: both nets are stamped from one shared initialization ---
+function freshInit() {
+  // Xavier-ish: std = 1/sqrt(fan_in), same recipe as implementation.py.
+  // Honest init — the deep-sigmoid pathology appears anyway.
+  const W = [], b = [];
+  for (let l = 0; l < SIZES.length - 1; l++) {
+    W.push(mat(SIZES[l], SIZES[l + 1], () => gauss() / Math.sqrt(SIZES[l])));
+    b.push(zeros(SIZES[l + 1]));
+  }
+  return { W, b };
+}
+function makeNet(init, useBN) {
+  return { W: init.W.map(M => M.map(r => r.slice())), b: init.b.map(v => v.slice()),
+           useBN, bns: useBN ? Array.from({ length: NH }, (_, l) => makeBN(SIZES[l + 1])) : null,
+           u: new Array(NH).fill(null),  // pre-activations kept for histograms
+           ema: null };
+}
+
+function affine(X, W, b) {
+  const n = X.length, a = W.length, c = W[0].length, out = mat(n, c, () => 0);
+  for (let i = 0; i < n; i++) for (let k = 0; k < c; k++) {
+    let s = b[k];
+    for (let j = 0; j < a; j++) s += X[i][j] * W[j][k];
+    out[i][k] = s;
+  }
+  return out;
+}
+
+// One full forward + backward + SGD update. Returns the batch loss.
+function trainStep(net, X, Y, lr) {
+  const n = X.length;
+  // ---- forward: BN sits between each matmul and its sigmoid ----
+  const acts = [X];                      // acts[l] = input to layer l
+  for (let l = 0; l < NH; l++) {
+    const Z = affine(acts[l], net.W[l], net.b[l]);
+    const U = net.useBN ? bnForward(net.bns[l], Z) : Z;  // what sigmoid SEES
+    net.u[l] = U;
+    acts.push(U.map(r => r.map(sigmoid)));
+  }
+  const Zout = affine(acts[NH], net.W[NH], net.b[NH]);
+  const P = Zout.map(r => sigmoid(r[0]));
+  // binary cross-entropy
+  let loss = 0;
+  for (let i = 0; i < n; i++) {
+    const p = Math.min(1 - 1e-7, Math.max(1e-7, P[i]));
+    loss -= Y[i] * Math.log(p) + (1 - Y[i]) * Math.log(1 - p);
+  }
+  loss /= n;
+  // ---- backward: BCE + sigmoid collapse to the clean (p - y)/n ----
+  const cl = w => Math.max(-80, Math.min(80, w));        // divergence guard
+  let dA = mat(n, SIZES[NH], () => 0);   // gradient w.r.t. acts[NH]
+  {
+    const dZ = P.map((p, i) => (p - Y[i]) / n);
+    const Wl = net.W[NH], A = acts[NH];
+    for (let j = 0; j < SIZES[NH]; j++) {
+      let dw = 0;
+      for (let i = 0; i < n; i++) { dw += A[i][j] * dZ[i]; dA[i][j] = dZ[i] * Wl[j][0]; }
+      Wl[j][0] = cl(Wl[j][0] - lr * dw);
+    }
+    let db = 0; for (let i = 0; i < n; i++) db += dZ[i];
+    net.b[NH][0] = cl(net.b[NH][0] - lr * db);
+  }
+  // hidden layers, deepest first
+  for (let l = NH - 1; l >= 0; l--) {
+    const A = acts[l + 1], Ain = acts[l];
+    const din = SIZES[l], dout = SIZES[l + 1];
+    // through sigmoid: derivative a(1-a) — the killer term. Once |z|>4
+    // it is ~0 and everything upstream of a saturated unit goes dark;
+    // and even at z=0 it is only 1/4, which is what makes the plain
+    // deep net's gradient shrink geometrically with depth.
+    const dU = dA.map((r, i) => r.map((g, j) => g * A[i][j] * (1 - A[i][j])));
+    const dZ = net.useBN ? bnBackward(net.bns[l], dU, lr) : dU;
+    const Wl = net.W[l];
+    const dAprev = mat(n, din, () => 0);
+    for (let k = 0; k < dout; k++) {
+      let db = 0;
+      for (let i = 0; i < n; i++) db += dZ[i][k];
+      net.b[l][k] = cl(net.b[l][k] - lr * db);
+    }
+    for (let j = 0; j < din; j++) for (let k = 0; k < dout; k++) {
+      let dw = 0;
+      for (let i = 0; i < n; i++) { dw += Ain[i][j] * dZ[i][k]; dAprev[i][j] += dZ[i][k] * Wl[j][k]; }
+      Wl[j][k] = cl(Wl[j][k] - lr * dw);
+    }
+    dA = dAprev;
+  }
+  net.ema = net.ema === null ? loss : 0.95 * net.ema + 0.05 * loss;  // smoothed for the chart
+  return loss;
+}
+
+// --- the task: is the point inside the circle of radius 1.4? ---
+function sampleBatch(n) {
+  const X = [], Y = [];
+  for (let i = 0; i < n; i++) {
+    const x = (rng() * 2 - 1) * 2.2, y = (rng() * 2 - 1) * 2.2;
+    X.push([x, y]); Y.push(x * x + y * y < 1.96 ? 1 : 0);
+  }
+  return [X, Y];
+}
+
+// --- state ---
+let init = freshInit();
+let netBN = makeNet(init, true);
+let netPlain = makeNet(init, false);
+let step = 0, playing = false, lastT = 0, acc = 0;
+let showBN = true;
+let lossBN = [], lossPlain = [];
+
+// --- controls ---
+const $ = id => document.getElementById(id);
+const lrS = $('lr'), bsS = $('bs'), spS = $('speed');
+const alpha = () => Math.pow(10, parseFloat(lrS.value));
+const batchSize = () => 2 ** parseInt(bsS.value);     // 2,4,8,16,32,64
+lrS.oninput = () => $('lrVal').textContent = alpha().toFixed(2);
+bsS.oninput = () => $('bsVal').textContent = batchSize();
+spS.oninput = () => $('speedVal').textContent = spS.value + ' steps/s';
+lrS.oninput(); bsS.oninput(); spS.oninput();
+
+$('bnToggle').onclick = () => {
+  showBN = !showBN;
+  const b = $('bnToggle');
+  b.className = 'bn-toggle ' + (showBN ? 'bn-on' : 'bn-off');
+  b.textContent = showBN ? 'Batch Norm: ON — showing BN net' : 'Batch Norm: OFF — showing plain net';
+  draw();
+};
+const playBtn = $('playBtn');
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Train';
+  if (playing) { lastT = performance.now(); requestAnimationFrame(tick); }
+};
+$('resetBtn').onclick = () => {
+  rng = mulberry32(7);                   // same seed -> same race, every time
+  init = freshInit();
+  netBN = makeNet(init, true); netPlain = makeNet(init, false);
+  step = 0; lossBN = []; lossPlain = []; acc = 0;
+  draw();
+};
+
+function doStep() {
+  const [X, Y] = sampleBatch(batchSize());
+  // IDENTICAL batch into both nets — BN is the only difference
+  trainStep(netBN, X, Y, alpha());
+  trainStep(netPlain, X, Y, alpha());
+  lossBN.push(netBN.ema); lossPlain.push(netPlain.ema);
+  step++;
+}
+
+// ============ drawing ============
+const hc = $('hist'), hctx = hc.getContext('2d');
+const lc = $('lossChart'), lctx = lc.getContext('2d');
+(function hidpi() {                      // crisp canvases on retina
+  const r = window.devicePixelRatio || 1;
+  for (const [c, x, w, h] of [[hc, hctx, 620, 460], [lc, lctx, 276, 120]]) {
+    c.style.width = w + 'px'; c.style.height = h + 'px';
+    c.width = w * r; c.height = h * r; x.scale(r, r);
+  }
+})();
+
+function layerStats(U) {                 // mean & std over batch*units, + saturation
+  let s = 0, n = 0, sat = 0;
+  for (const row of U) for (const z of row) { s += z; n++; if (Math.abs(z) > SAT) sat++; }
+  const m = s / n;
+  let v = 0;
+  for (const row of U) for (const z of row) v += (z - m) ** 2;
+  return { mean: m, std: Math.sqrt(v / n), sat: sat / n };
+}
+
+function drawHistPanel(U, y0, ph, label, color) {
+  const W = 620, x0 = 36, pw = W - x0 - 12;
+  const zx = z => x0 + (z + ZLIM) / (2 * ZLIM) * pw;
+  // saturation zones: where sigmoid is flat and gradients die
+  hctx.fillStyle = 'rgba(248,113,113,0.10)';
+  hctx.fillRect(x0, y0, zx(-SAT) - x0, ph);
+  hctx.fillRect(zx(SAT), y0, x0 + pw - zx(SAT), ph);
+  // axis + zero line
+  hctx.strokeStyle = '#23232f'; hctx.lineWidth = 1;
+  hctx.strokeRect(x0, y0, pw, ph);
+  hctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  hctx.beginPath(); hctx.moveTo(zx(0), y0); hctx.lineTo(zx(0), y0 + ph); hctx.stroke();
+  // bin the pre-activations; out-of-window values pile into the edge bins
+  const bins = zeros(NBINS);
+  for (const row of U) for (const z of row) {
+    let b = Math.floor((z + ZLIM) / (2 * ZLIM) * NBINS);
+    bins[Math.max(0, Math.min(NBINS - 1, b))]++;
+  }
+  const peak = Math.max(1, ...bins);
+  const bw = pw / NBINS;
+  for (let b = 0; b < NBINS; b++) {
+    if (!bins[b]) continue;
+    const h = bins[b] / peak * (ph - 8);
+    const zc = -ZLIM + (b + 0.5) / NBINS * 2 * ZLIM;
+    hctx.fillStyle = Math.abs(zc) > SAT ? 'rgba(248,113,113,0.85)' : color;
+    hctx.fillRect(x0 + b * bw + 0.5, y0 + ph - h, bw - 1, h);
+  }
+  // stats overlay: dashed amber line = batch mean of this layer
+  const st = layerStats(U);
+  hctx.strokeStyle = '#fbbf24'; hctx.setLineDash([3, 3]);
+  hctx.beginPath(); hctx.moveTo(zx(Math.max(-ZLIM, Math.min(ZLIM, st.mean))), y0);
+  hctx.lineTo(zx(Math.max(-ZLIM, Math.min(ZLIM, st.mean))), y0 + ph); hctx.stroke();
+  hctx.setLineDash([]);
+  hctx.fillStyle = '#9a9ab0'; hctx.font = '11px sans-serif';
+  hctx.textAlign = 'left';
+  hctx.fillText(label, x0 + 6, y0 + 14);
+  hctx.textAlign = 'right';
+  hctx.fillStyle = st.sat > 0.3 ? '#f87171' : '#9a9ab0';
+  hctx.fillText('μ ' + st.mean.toFixed(2) + '   σ ' + st.std.toFixed(2) + '   saturated ' + (st.sat * 100).toFixed(0) + '%', x0 + pw - 6, y0 + 14);
+  // x tick labels
+  hctx.fillStyle = '#5d5d72'; hctx.font = '10px sans-serif'; hctx.textAlign = 'center';
+  for (const z of [-8, -4, 0, 4, 8]) hctx.fillText(z, zx(z), y0 + ph + 12);
+  return st;
+}
+
+function drawLossChart() {
+  lctx.clearRect(0, 0, 276, 120);
+  if (lossBN.length < 2) { lctx.fillStyle = '#5d5d72'; lctx.font = '11px sans-serif'; lctx.textAlign = 'center'; lctx.fillText('press ▶ Train', 138, 64); return; }
+  // log scale: BN-vs-plain gaps are multiplicative, linear hides them
+  const all = lossBN.concat(lossPlain).filter(v => v > 0);
+  const lo = Math.log(Math.max(1e-4, Math.min(...all))), hi = Math.log(Math.max(...all) + 1e-9);
+  const Y = v => 112 - (Math.log(Math.max(1e-4, v)) - lo) / (hi - lo + 1e-9) * 104;
+  const stride = Math.max(1, Math.ceil(lossBN.length / 270));
+  for (const [arr, col] of [[lossPlain, '#f72585'], [lossBN, '#4ade80']]) {
+    lctx.strokeStyle = col; lctx.lineWidth = 1.8; lctx.beginPath();
+    for (let i = 0; i < arr.length; i += stride) {
+      const x = 4 + i / (lossBN.length - 1) * 268;
+      i === 0 ? lctx.moveTo(x, Y(arr[i])) : lctx.lineTo(x, Y(arr[i]));
+    }
+    lctx.stroke();
+  }
+}
+
+function avg(a) { return a.reduce((s, v) => s + v, 0) / a.length; }
+
+function draw() {
+  hctx.clearRect(0, 0, 620, 460);
+  const net = showBN ? netBN : netPlain;
+  let stats = null;
+  if (net.u[0]) {
+    stats = [];
+    const ph = 122, gap = 30;            // 3 stacked panels
+    for (let l = 0; l < NH; l++)
+      stats.push(drawHistPanel(net.u[l], 12 + l * (ph + gap), ph,
+        'hidden layer ' + (l + 1) + ' → sigmoid', showBN ? '#4ade80' : '#4cc9f0'));
+  } else {
+    hctx.fillStyle = '#5d5d72'; hctx.font = '13px sans-serif'; hctx.textAlign = 'center';
+    hctx.fillText('Press ▶ Train to start both networks', 310, 230);
+  }
+  drawLossChart();
+  // BN internals readout — gamma/beta are LEARNED, watch them drift from 1/0
+  $('sGamma').textContent = avg(netBN.bns[0].gamma).toFixed(3);
+  $('sBeta').textContent = avg(netBN.bns[0].beta).toFixed(3);
+  $('sMean').textContent = avg(netBN.bns[0].mean).toFixed(3);
+  $('sVar').textContent = avg(netBN.bns[0].varr).toFixed(3);
+  annotate(stats);
+}
+
+function annotate(stats) {
+  const ann = $('annotation');
+  if (step === 0) {
+    ann.innerHTML = '<b>Ready.</b> Two nets, identical weights, identical batches — the only difference is BN between each matmul and its sigmoid. Press <b>▶ Train</b>, toggle BN OFF to watch the plain net\'s deep layers pinch into a spike, then crank α to blow them into the red zones instead.';
+    return;
+  }
+  const bn = netBN.ema, pl = netPlain.ema;
+  const vs = `Loss: BN <span style="color:var(--bn)">${bn.toFixed(3)}</span> vs plain <span style="color:var(--plain)">${pl.toFixed(3)}</span>.`;
+  const p = netPlain.u.map(layerStats);  // plain net per-layer stats
+  const last = p[NH - 1];
+  if (!showBN && last.sat > 0.35) {
+    ann.innerHTML = `<b>Layer ${NH} saturating — gradients vanishing.</b> ${(last.sat * 100).toFixed(0)}% of its pre-activations sit past |z| = 4, where sigmoid\'s slope is under 0.02; those units pass almost no gradient upstream. ${vs} Toggle BN ON to see the cure.`;
+  } else if (!showBN && last.std < 0.45) {
+    ann.innerHTML = `<b>Layer ${NH} collapsing — the implementation.py Demo 1 failure.</b> Its spread is down to σ ≈ ${last.std.toFixed(2)}: sigmoid\'s slope ≤ 1/4 shrinks the signal every layer, so deep layers see near-constant inputs and learn almost nothing. BN would re-standardize to σ ≈ 1 right here. ${vs}`;
+  } else if (!showBN && (last.std > 2.5 || p[0].std > 2.5)) {
+    ann.innerHTML = `<b>Distributions drifting.</b> The plain net\'s spread (σ ≈ ${Math.max(last.std, p[0].std).toFixed(1)}) is set by raw weight magnitudes, and at α = ${alpha().toFixed(2)} the weights inflate every step. Nothing re-centers them — they\'re headed for the red zones. ${vs}`;
+  } else if (showBN && batchSize() <= 4) {
+    ann.innerHTML = `<b>BN holding, but jittery.</b> With only ${batchSize()} samples, μ_B and σ²_B are noisy estimates — watch the readout and histograms twitch step to step. That noise enters every forward pass: mild regularizer at batch 16+, real damage at batch 2. This is why tiny-batch models use GroupNorm. ${vs}`;
+  } else if (showBN) {
+    const s1 = stats ? stats[0] : null;
+    ann.innerHTML = `<b>BN keeping distributions centered.</b> Whatever the weights do, each sigmoid receives values re-standardized to μ ≈ 0, σ ≈ 1 (layer 1: μ ${s1 ? s1.mean.toFixed(2) : '–'}, σ ${s1 ? s1.std.toFixed(2) : '–'}). γ̄ and β̄ drifting from 1 and 0 means the net is <i>learning</i> the distribution it wants. ${vs}`;
+  } else {
+    ann.innerHTML = `<b>Plain net holding on</b> — at α = ${alpha().toFixed(2)} its distributions haven\'t collapsed or blown up yet. Push the learning rate: with no re-standardization, any change in upstream weight scale compounds layer over layer. ${vs}`;
+  }
+}
+
+function tick(t) {
+  if (!playing) return;
+  // speed slider sets steps/second; accumulate fractional steps so slow
+  // settings still advance, and cap the per-frame burst to stay at 60fps
+  acc += (t - lastT) / 1000 * parseInt(spS.value);
+  lastT = t;
+  const n = Math.min(20, Math.floor(acc));
+  if (n > 0) { acc -= n; for (let i = 0; i < n; i++) doStep(); draw(); }
+  requestAnimationFrame(tick);
+}
+
+draw();
+</script>
+</body>
+</html>

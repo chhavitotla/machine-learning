@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loss Function Explorer — MSE vs MAE vs Huber vs Cross-Entropy</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    /* file-specific aliases: the four losses */
+    --mse: var(--magenta);
+    --mae: var(--cyan);
+    --huber: var(--amber);
+    --bce: var(--green);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .subtitle .q { color: var(--mse); font-weight: 600; } .subtitle .l { color: var(--mae); font-weight: 600; }
+  .subtitle .h { color: var(--huber); font-weight: 600; } .subtitle .x { color: var(--bce); font-weight: 600; }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .layout + .layout { margin-top: 22px; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  #fit { cursor: grab; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  /* loss toggles: lit when visible, dimmed when hidden */
+  button.toggle { border-width: 1px; opacity: 0.38; }
+  button.toggle.on { opacity: 1; box-shadow: 0 0 14px var(--glow); border-color: var(--glow); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+
+  /* loss readout table */
+  .readout { font-size: 12.5px; }
+  .readout table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  .readout td, .readout th { padding: 6px 4px; text-align: left; border-bottom: 1px solid #1f1f2b; }
+  .readout th { color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .readout tr:last-child td { border-bottom: none; }
+  .readout tr.off td { opacity: 0.3; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 04 training craft</div>
+<h1>The Loss Function Explorer</h1>
+<p class="subtitle">A loss function prices a mistake; its <b>gradient</b> is the push the model feels. <span class="q">MSE</span> pushes harder the farther off you are, <span class="l">MAE</span> pushes the same no matter what, <span class="h">Huber</span> switches between them at δ, and <span class="x">cross-entropy</span> prices confidence. <b>Drag the prediction slider</b> and watch the gradients diverge — then <b>drag the outlier point</b> below and watch which fitted line takes the bait.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="curves" width="620" height="430"></canvas>
+    <div class="caption">Loss vs prediction, target y = 1 (dashed). BCE shown for label y = 1 over the raw score (through a sigmoid).</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls" id="toggles">
+      <button class="toggle on" data-k="mse" style="--glow: rgba(247,37,133,.45); color: var(--mse)">MSE</button>
+      <button class="toggle on" data-k="mae" style="--glow: rgba(76,201,240,.45); color: var(--mae)">MAE</button>
+      <button class="toggle on" data-k="huber" style="--glow: rgba(251,191,36,.45); color: var(--huber)">Huber</button>
+      <button class="toggle on" data-k="bce" style="--glow: rgba(74,222,128,.45); color: var(--bce)">BCE</button>
+    </div>
+    <div class="card">
+      <div class="slider-row">
+        <label>Prediction ŷ <span class="val" id="predVal">3.20</span></label>
+        <input type="range" id="pred" min="-3" max="5" step="0.02" value="3.2">
+      </div>
+      <div class="slider-row">
+        <label>Huber δ <span class="val" id="deltaVal">1.00</span></label>
+        <input type="range" id="delta" min="0.2" max="3" step="0.05" value="1">
+      </div>
+    </div>
+    <div class="card readout" id="readout"></div>
+    <div class="card annotation" id="annotation1"></div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="fit" width="620" height="330"></canvas>
+    <div class="caption">Ten points, two lines fitted live by gradient descent — one minimizing MSE, one minimizing MAE. ◆ = the outlier, drag it.</div>
+  </div>
+  <div class="side">
+    <div class="card readout" id="fitStats"></div>
+    <div class="card annotation" id="annotation2"></div>
+    <div class="card controls">
+      <button id="resetOutlier">↺ Reset outlier</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// PANEL 1 — FOUR LOSSES, ONE PREDICTION
+// Every curve is loss-as-a-function-of-the-prediction with the
+// target fixed at y=1. The thing to watch isn't the loss value,
+// it's the GRADIENT readout: that's the push backprop delivers.
+//   MSE    : grad = 2(ŷ−y)        — grows without bound
+//   MAE    : grad = sign(ŷ−y)     — always ±1, even at ŷ≈y
+//   Huber  : grad = clip(ŷ−y, ±δ) — literally MSE with the
+//                                    gradient clipped at δ
+//   BCE    : treat the slider as a raw score z, squash with a
+//            sigmoid, label = 1. grad wrt z = σ(z)−1 ∈ (−1, 0):
+//            huge loss when confidently wrong, BOUNDED gradient.
+// ============================================================
+
+const TARGET = 1;
+const sigmoid = z => 1 / (1 + Math.exp(-z));
+
+// Each loss: f(prediction) -> loss, g(prediction) -> dLoss/dPrediction.
+// Huber reads `del` (the δ slider) at call time so the curve reshapes live.
+let del = 1.0;
+const LOSSES = {
+  mse:   { name: 'MSE',   color: '#f72585',
+           f: p => (p - TARGET) ** 2,
+           g: p => 2 * (p - TARGET) },
+  mae:   { name: 'MAE',   color: '#4cc9f0',
+           f: p => Math.abs(p - TARGET),
+           g: p => Math.sign(p - TARGET) },
+  huber: { name: 'Huber', color: '#fbbf24',
+           // quadratic inside |e|<=δ, linear outside — the two pieces
+           // meet with matching value AND slope, so it stays smooth
+           f: p => { const e = Math.abs(p - TARGET);
+                     return e <= del ? 0.5 * e * e : del * (e - 0.5 * del); },
+           g: p => { const e = p - TARGET;
+                     return Math.max(-del, Math.min(del, e)); } },
+  bce:   { name: 'BCE',   color: '#4ade80',
+           // -log σ(z) for label 1, written via softplus for stability
+           f: p => Math.log(1 + Math.exp(-p)),
+           g: p => sigmoid(p) - 1 },
+};
+const show = { mse: true, mae: true, huber: true, bce: true };
+
+// --- world <-> pixel mapping for panel 1 ---
+const c1 = document.getElementById('curves');
+const x1 = c1.getContext('2d');
+const W1 = 620, H1 = 430, ML = 38, MB = 26, MT = 12, MR = 12;
+const P_MIN = -3, P_MAX = 5, L_MIN = 0, L_MAX = 8;
+function hidpi(canvas, ctx, w, h) {
+  const r = window.devicePixelRatio || 1;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r; ctx.scale(r, r);
+}
+hidpi(c1, x1, W1, H1);
+const px1 = p => ML + (p - P_MIN) / (P_MAX - P_MIN) * (W1 - ML - MR);
+const py1 = L => H1 - MB - (L - L_MIN) / (L_MAX - L_MIN) * (H1 - MB - MT);
+
+const predSlider = document.getElementById('pred');
+const deltaSlider = document.getElementById('delta');
+
+function drawCurves() {
+  x1.clearRect(0, 0, W1, H1);
+  x1.fillStyle = '#101018'; x1.fillRect(0, 0, W1, H1);
+
+  // grid + axis labels
+  x1.strokeStyle = '#1d1d29'; x1.lineWidth = 1;
+  x1.fillStyle = '#5d5d72'; x1.font = '10px sans-serif'; x1.textAlign = 'center';
+  for (let p = P_MIN; p <= P_MAX; p++) {
+    x1.beginPath(); x1.moveTo(px1(p), MT); x1.lineTo(px1(p), H1 - MB); x1.stroke();
+    x1.fillText(p, px1(p), H1 - MB + 14);
+  }
+  x1.textAlign = 'right';
+  for (let L = 0; L <= L_MAX; L += 2) {
+    x1.beginPath(); x1.moveTo(ML, py1(L)); x1.lineTo(W1 - MR, py1(L)); x1.stroke();
+    x1.fillText(L, ML - 6, py1(L) + 3);
+  }
+
+  // the target: where every regression loss bottoms out
+  x1.strokeStyle = 'rgba(255,255,255,0.35)'; x1.setLineDash([4, 4]);
+  x1.beginPath(); x1.moveTo(px1(TARGET), MT); x1.lineTo(px1(TARGET), H1 - MB); x1.stroke();
+  x1.setLineDash([]);
+  x1.fillStyle = 'rgba(255,255,255,0.55)'; x1.textAlign = 'left';
+  x1.fillText('target y = 1', px1(TARGET) + 6, MT + 10);
+
+  // loss curves — sampled per pixel so the Huber kink renders crisply
+  for (const k of Object.keys(LOSSES)) {
+    if (!show[k]) continue;
+    const { f, color } = LOSSES[k];
+    x1.save();
+    x1.shadowColor = color; x1.shadowBlur = 5;
+    x1.strokeStyle = color; x1.lineWidth = 2; x1.globalAlpha = 0.9;
+    x1.beginPath();
+    let started = false;
+    for (let i = 0; i <= W1 - ML - MR; i++) {
+      const p = P_MIN + i / (W1 - ML - MR) * (P_MAX - P_MIN);
+      const L = f(p);
+      if (L > L_MAX * 1.02) { started = false; continue; }  // leave the chart cleanly
+      const X = px1(p), Y = py1(L);
+      started ? x1.lineTo(X, Y) : x1.moveTo(X, Y);
+      started = true;
+    }
+    x1.stroke();
+    x1.restore();
+  }
+
+  // live markers at the slider's prediction
+  const p = parseFloat(predSlider.value);
+  x1.strokeStyle = 'rgba(76,201,240,0.4)'; x1.setLineDash([2, 4]);
+  x1.beginPath(); x1.moveTo(px1(p), MT); x1.lineTo(px1(p), H1 - MB); x1.stroke();
+  x1.setLineDash([]);
+  for (const k of Object.keys(LOSSES)) {
+    if (!show[k]) continue;
+    const { f, color } = LOSSES[k];
+    const L = f(p);
+    if (L > L_MAX) continue;
+    x1.save();
+    x1.shadowColor = color; x1.shadowBlur = 10;
+    x1.fillStyle = color;
+    x1.beginPath(); x1.arc(px1(p), py1(L), 5.5, 0, Math.PI * 2); x1.fill();
+    x1.restore();
+    x1.strokeStyle = '#0b0b10'; x1.lineWidth = 2;
+    x1.beginPath(); x1.arc(px1(p), py1(L), 5.5, 0, Math.PI * 2); x1.stroke();
+  }
+
+  updateReadout(p);
+}
+
+function updateReadout(p) {
+  const rows = Object.keys(LOSSES).map(k => {
+    const { name, color, f, g } = LOSSES[k];
+    return `<tr class="${show[k] ? '' : 'off'}">` +
+      `<td><span class="swatch" style="background:${color}; box-shadow:0 0 8px ${color}"></span>${name}</td>` +
+      `<td>${f(p).toFixed(3)}</td><td>${g(p) >= 0 ? '+' : ''}${g(p).toFixed(3)}</td></tr>`;
+  }).join('');
+  document.getElementById('readout').innerHTML =
+    `<div class="chart-label">At ŷ = ${p.toFixed(2)}</div>` +
+    `<table><tr><th>loss</th><th>value</th><th>gradient</th></tr>${rows}</table>` +
+    `<div class="hint">gradient = the push backprop sends. Sign says direction, size says urgency.</div>`;
+
+  // annotation: narrate whichever regime the slider is in
+  const e = p - TARGET, ae = Math.abs(e);
+  const ann = document.getElementById('annotation1');
+  if (ae < 0.25) {
+    ann.innerHTML = `<b>Almost converged.</b> MSE and Huber gradients have melted to ≈ 0 — a soft landing. But MAE still pushes at full <b>±1</b> no matter how close you are: that constant shove is why pure-MAE training jitters around the optimum instead of settling into it.`;
+  } else if (ae <= del) {
+    ann.innerHTML = `<b>Inside Huber's δ = ${del.toFixed(2)}.</b> Here |error| ≤ δ, so Huber is in its <b>quadratic regime</b> — its gradient (${LOSSES.huber.g(p).toFixed(2)}) tracks the raw error exactly, like MSE/2. Drag past ±δ from the target and watch it freeze.`;
+  } else if (ae <= 2.5) {
+    ann.innerHTML = `<b>Outside δ: Huber has switched regimes.</b> Its gradient is pinned at <b>±δ = ±${del.toFixed(2)}</b> while MSE's keeps growing (now ${LOSSES.mse.g(p).toFixed(2)}). Huber is literally gradient-clipped MSE — outliers get a vote, but a capped one.`;
+  } else {
+    ann.innerHTML = `<b>Deep in outlier territory.</b> MSE's gradient is <b>${LOSSES.mse.g(p).toFixed(1)}</b> — ${Math.abs(LOSSES.mse.g(p)).toFixed(0)}× MAE's constant ±1. One point out here can out-shout dozens of well-fit points under MSE. ${p < -1.5 ? 'And note BCE: the score says "confidently class 0" but the label is 1 — loss ' + LOSSES.bce.f(p).toFixed(1) + ', yet the gradient stays bounded near −1, so the model can still recover.' : 'Meanwhile BCE’s gradient stays bounded in (−1, 0) however wrong the score gets.'}`;
+  }
+}
+
+// --- panel 1 controls ---
+predSlider.oninput = () => {
+  document.getElementById('predVal').textContent = parseFloat(predSlider.value).toFixed(2);
+  drawCurves();
+};
+deltaSlider.oninput = () => {
+  del = parseFloat(deltaSlider.value);
+  document.getElementById('deltaVal').textContent = del.toFixed(2);
+  drawCurves();
+};
+document.getElementById('toggles').addEventListener('click', e => {
+  const btn = e.target.closest('button.toggle');
+  if (!btn) return;
+  show[btn.dataset.k] = !show[btn.dataset.k];
+  btn.classList.toggle('on', show[btn.dataset.k]);
+  drawCurves();
+});
+
+// ============================================================
+// PANEL 2 — WHO GETS BULLIED BY THE OUTLIER?
+// Ten points on a clean trend, one of them draggable. Two lines
+// y = wx + b are fitted CONTINUOUSLY: every animation frame each
+// takes a handful of gradient-descent steps on its own loss.
+//   MSE grads: dL/dw = (2/n)Σ eᵢxᵢ,  dL/db = (2/n)Σ eᵢ
+//   MAE grads: dL/dw = (1/n)Σ sign(eᵢ)xᵢ, dL/db = (1/n)Σ sign(eᵢ)
+// Under MSE the outlier's residual e enters the gradient at full
+// size — drag it away and it drags the line. Under MAE it only
+// contributes its SIGN: one vote out of ten, however far it goes.
+// ============================================================
+
+const c2 = document.getElementById('fit');
+const x2 = c2.getContext('2d');
+const W2 = 620, H2 = 330;
+hidpi(c2, x2, W2, H2);
+const FX_MIN = 0, FX_MAX = 10.5, FY_MIN = -1, FY_MAX = 16;
+const px2 = x => ML + (x - FX_MIN) / (FX_MAX - FX_MIN) * (W2 - ML - MR);
+const py2 = y => H2 - MB - (y - FY_MIN) / (FY_MAX - FY_MIN) * (H2 - MB - MT);
+
+// nine inliers on y ≈ 0.6x + 1 (fixed jitter so the file is deterministic)
+const JITTER = [0.3, -0.25, 0.18, -0.1, 0.35, -0.3, 0.12, -0.2, 0.22];
+const pts = JITTER.map((j, i) => ({ x: 1 + i, y: 0.6 * (1 + i) + 1 + j }));
+const OUTLIER_HOME = { x: 8, y: 14 };
+const outlier = { ...OUTLIER_HOME };
+
+// two fitted lines, each owning a (w, b) and a loss-specific gradient
+const fits = {
+  mse: { w: 0, b: 0, color: '#f72585', label: 'MSE fit', lr: 0.004 },
+  mae: { w: 0, b: 0, color: '#4cc9f0', label: 'MAE fit', lr: 0.004 },
+};
+
+function gradStep(fit, kind) {
+  const data = [...pts, outlier];
+  const n = data.length;
+  let gw = 0, gb = 0;
+  for (const { x, y } of data) {
+    const e = fit.w * x + fit.b - y;             // residual: prediction − truth
+    if (kind === 'mse') { gw += 2 * e * x / n; gb += 2 * e / n; }
+    else { gw += Math.sign(e) * x / n; gb += Math.sign(e) / n; }
+  }
+  fit.w -= fit.lr * gw;
+  fit.b -= fit.lr * gb;
+}
+
+function drawFit() {
+  // a few steps per frame per line: enough to track the dragged outlier
+  // in real time, slow enough that you SEE the MSE line get pulled
+  for (let i = 0; i < 25; i++) { gradStep(fits.mse, 'mse'); gradStep(fits.mae, 'mae'); }
+
+  x2.clearRect(0, 0, W2, H2);
+  x2.fillStyle = '#101018'; x2.fillRect(0, 0, W2, H2);
+
+  // grid
+  x2.strokeStyle = '#1d1d29'; x2.lineWidth = 1;
+  x2.fillStyle = '#5d5d72'; x2.font = '10px sans-serif'; x2.textAlign = 'center';
+  for (let gx = 0; gx <= 10; gx += 2) {
+    x2.beginPath(); x2.moveTo(px2(gx), MT); x2.lineTo(px2(gx), H2 - MB); x2.stroke();
+    x2.fillText(gx, px2(gx), H2 - MB + 14);
+  }
+  x2.textAlign = 'right';
+  for (let gy = 0; gy <= 16; gy += 4) {
+    x2.beginPath(); x2.moveTo(ML, py2(gy)); x2.lineTo(W2 - MR, py2(gy)); x2.stroke();
+    x2.fillText(gy, ML - 6, py2(gy) + 3);
+  }
+
+  // the two fitted lines
+  for (const k of ['mse', 'mae']) {
+    const f = fits[k];
+    x2.save();
+    x2.shadowColor = f.color; x2.shadowBlur = 6;
+    x2.strokeStyle = f.color; x2.lineWidth = 2.2; x2.globalAlpha = 0.9;
+    x2.beginPath();
+    x2.moveTo(px2(FX_MIN), py2(f.w * FX_MIN + f.b));
+    x2.lineTo(px2(FX_MAX), py2(f.w * FX_MAX + f.b));
+    x2.stroke();
+    x2.restore();
+    x2.fillStyle = f.color; x2.font = '600 11px sans-serif'; x2.textAlign = 'left';
+    const yEnd = Math.max(MT + 10, Math.min(H2 - MB - 4, py2(f.w * 9.9 + f.b)));
+    x2.fillText(f.label, px2(9.9) - 40, yEnd - 8);
+  }
+
+  // inliers
+  for (const p of pts) {
+    x2.fillStyle = '#ecedf2';
+    x2.beginPath(); x2.arc(px2(p.x), py2(p.y), 4, 0, Math.PI * 2); x2.fill();
+  }
+
+  // the draggable outlier: a glowing diamond
+  const ox = px2(outlier.x), oy = py2(outlier.y);
+  x2.save();
+  x2.shadowColor = '#f87171'; x2.shadowBlur = 14;
+  x2.fillStyle = '#f87171';
+  x2.beginPath();
+  x2.moveTo(ox, oy - 8); x2.lineTo(ox + 8, oy); x2.lineTo(ox, oy + 8); x2.lineTo(ox - 8, oy);
+  x2.closePath(); x2.fill();
+  x2.restore();
+  x2.fillStyle = 'rgba(248,113,113,0.85)'; x2.font = '600 10.5px sans-serif'; x2.textAlign = 'center';
+  x2.fillText('drag me', ox, oy - 14);
+
+  updateFitPanels();
+  requestAnimationFrame(drawFit);
+}
+
+function updateFitPanels() {
+  const rows = ['mse', 'mae'].map(k => {
+    const f = fits[k];
+    return `<tr><td><span class="swatch" style="background:${f.color}; box-shadow:0 0 8px ${f.color}"></span>${f.label}</td>` +
+      `<td>${f.w.toFixed(3)}</td><td>${f.b.toFixed(3)}</td></tr>`;
+  }).join('');
+  document.getElementById('fitStats').innerHTML =
+    `<div class="chart-label">Fitted lines y = wx + b</div>` +
+    `<table><tr><th>line</th><th>slope w</th><th>intercept b</th></tr>${rows}</table>` +
+    `<div class="hint">true trend of the 9 inliers: w ≈ 0.6, b ≈ 1</div>`;
+
+  // how far off-trend is the outlier, and how far apart are the lines?
+  const offTrend = outlier.y - (0.6 * outlier.x + 1);
+  const gap = Math.abs(fits.mse.w - fits.mae.w);
+  const ann = document.getElementById('annotation2');
+  if (Math.abs(offTrend) < 1.2) {
+    ann.innerHTML = `<b>The outlier is on the trend right now</b> — both lines agree (slope gap ${gap.toFixed(3)}). Drag the red diamond far above the others and watch which line follows it.`;
+  } else if (gap < 0.08) {
+    ann.innerHTML = `<b>The lines are reacting…</b> The outlier sits ${Math.abs(offTrend).toFixed(1)} units off the trend. Its residual feeds the <span style="color:var(--mse)">MSE</span> gradient at full size, but feeds <span style="color:var(--mae)">MAE</span> only its sign — one vote in ten.`;
+  } else {
+    ann.innerHTML = `<b>There's the split.</b> The <span style="color:var(--mse)">MSE line</span> tilted toward the outlier (slope ${fits.mse.w.toFixed(2)} vs MAE's ${fits.mae.w.toFixed(2)}) — that one point's squared residual outweighs the nine inliers. The <span style="color:var(--mae)">MAE line</span> stays on the crowd: it minimizes toward the <b>median</b>, and the median doesn't care how extreme one point gets.`;
+  }
+}
+
+// --- dragging the outlier (pointer events cover mouse + touch) ---
+let dragging = false;
+c2.addEventListener('pointerdown', e => {
+  const r = c2.getBoundingClientRect();
+  // generous 22px hit radius so grabbing the diamond is easy
+  if (Math.hypot(e.clientX - r.left - px2(outlier.x), e.clientY - r.top - py2(outlier.y)) < 22) {
+    dragging = true;
+    c2.setPointerCapture(e.pointerId);
+    c2.style.cursor = 'grabbing';
+  }
+});
+c2.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const r = c2.getBoundingClientRect();
+  // pixel -> world, clamped so the point can't leave the chart
+  outlier.x = Math.max(0.3, Math.min(10.2, FX_MIN + (e.clientX - r.left - ML) / (W2 - ML - MR) * (FX_MAX - FX_MIN)));
+  outlier.y = Math.max(FY_MIN + 0.5, Math.min(FY_MAX - 0.5, FY_MAX - (e.clientY - r.top - MT) / (H2 - MB - MT) * (FY_MAX - FY_MIN)));
+});
+c2.addEventListener('pointerup', () => { dragging = false; c2.style.cursor = 'grab'; });
+document.getElementById('resetOutlier').onclick = () => { outlier.x = OUTLIER_HOME.x; outlier.y = OUTLIER_HOME.y; };
+
+// --- go ---
+drawCurves();
+requestAnimationFrame(drawFit);
+</script>
+</body>
+</html>

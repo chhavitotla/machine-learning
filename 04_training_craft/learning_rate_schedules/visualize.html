@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Learning Rate Schedules — Warmup, Decay, Cosine</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    /* file-specific aliases: the two runners */
+    --sched: var(--cyan);     /* the selected schedule */
+    --const: var(--amber);    /* the constant-LR baseline it races against */
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 740px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .subtitle .sc { color: var(--sched); font-weight: 600; }
+  .subtitle .co { color: var(--const); font-weight: 600; }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .sched-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sched-row button { padding: 8px 11px; font-size: 12px; }
+  .sched-row button.active {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border-color: transparent;
+    box-shadow: 0 3px 14px rgba(76,201,240,0.3);
+  }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 04 training craft</div>
+<h1>Learning Rate Schedules</h1>
+<p class="subtitle">Top: the LR-vs-step curve for the <span class="sc">selected schedule</span>, traced live. Bottom: a ball doing gradient descent on a bumpy 1D loss landscape under that schedule, racing a <span class="co">constant-LR</span> ghost. <b>Watch the ghost bounce around the minimum forever</b> while the decaying schedule glides in and stops. Try cosine + warmup, then crank the initial LR.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="lrChart" width="620" height="200"></canvas>
+    <div class="caption">learning rate vs step · ● = current LR · dashed amber = the constant baseline</div>
+    <canvas id="land" width="620" height="250"></canvas>
+    <div class="caption">1D loss landscape · ★ global minimum · two balls, same start, same gradient noise — only the schedule differs</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="resetBtn">↺ Reset</button>
+    </div>
+    <div class="card">
+      <div class="chart-label">Schedule</div>
+      <div class="sched-row" id="schedRow"></div>
+    </div>
+    <div class="card">
+      <div class="slider-row">
+        <label>Initial LR α₀ <span class="val" id="lrVal">0.50</span></label>
+        <input type="range" id="lr0" min="-2" max="0" step="0.05" value="-0.3">
+      </div>
+      <div class="slider-row">
+        <label>Total steps T <span class="val" id="TVal">400</span></label>
+        <input type="range" id="T" min="100" max="1000" step="50" value="400">
+      </div>
+      <div class="slider-row">
+        <label>Warmup steps T_w <span class="val" id="warmVal">60</span></label>
+        <input type="range" id="warm" min="0" max="200" step="10" value="60">
+      </div>
+      <div class="slider-row">
+        <label>Speed <span class="val" id="speedVal">30 steps/s</span></label>
+        <input type="range" id="speed" min="2" max="120" step="2" value="30">
+      </div>
+    </div>
+    <div class="card stat-grid">
+      <div class="stat"><div class="k">step</div><div class="v" id="stepStat">0</div></div>
+      <div class="stat"><div class="k">current LR</div><div class="v" style="color:var(--sched)" id="lrStat">—</div></div>
+      <div class="stat"><div class="k">loss (schedule)</div><div class="v" style="color:var(--sched)" id="lossS">—</div></div>
+      <div class="stat"><div class="k">loss (constant)</div><div class="v" style="color:var(--const)" id="lossC">—</div></div>
+    </div>
+    <div class="card">
+      <div class="chart-label">Loss vs step — schedule vs constant</div>
+      <canvas id="lossChart" width="276" height="110"></canvas>
+    </div>
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// ONE DESCENT, TWO LEARNING RATES — the same noisy gradient
+// descent runs twice from the same start: once with the selected
+// schedule, once with a constant LR. With mini-batch-style noise,
+// constant-LR SGD doesn't converge to the minimum — it converges
+// to a NOISE BALL around it whose radius scales with α. Decaying
+// α shrinks that ball to zero. That's the whole reason schedules
+// exist, and you can watch it happen below.
+// ============================================================
+
+// --- the schedules: each maps step t -> learning rate ---
+// All take (t, lr0, T, Tw) so swapping them is one function pointer.
+const SCHEDULES = {
+  'constant':  (t, lr0, T, Tw) => lr0,
+  // staircase: cut LR in half every T/5 steps (floor() makes the cliffs)
+  'step decay':(t, lr0, T, Tw) => lr0 * Math.pow(0.5, Math.floor(t / (T / 5))),
+  // smooth slide: same *fraction* lost every step; k chosen so the
+  // end of training sits at e^-4 ≈ 2% of the peak
+  'exponential':(t, lr0, T, Tw) => lr0 * Math.exp(-4 * t / T),
+  // half a cosine wave from lr0 down to ~0: flat at the start
+  // (explore at full speed) and flat at the end (long gentle glide)
+  'cosine':    (t, lr0, T, Tw) => 0.5 * lr0 * (1 + Math.cos(Math.PI * Math.min(t, T) / T)),
+  // linear ramp 0 -> lr0 over Tw steps, then cosine over what's left.
+  // The modern default: protect the fragile early steps, then decay.
+  'cosine + warmup': (t, lr0, T, Tw) => {
+    if (t < Tw) return lr0 * t / Math.max(Tw, 1);
+    return 0.5 * lr0 * (1 + Math.cos(Math.PI * Math.min(t - Tw, T - Tw) / Math.max(T - Tw, 1)));
+  },
+};
+
+// --- the 1D loss landscape: a bowl with bumps riding on it ---
+// The quadratic supplies the global trend; the sine supplies local
+// minima and the curvature that makes a too-big step overshoot.
+function L(x) { return 0.07 * (x - 6.5) ** 2 + 0.22 * Math.sin(2.6 * x) + 0.8; }
+function dL(x) { const h = 1e-5; return (L(x + h) - L(x - h)) / (2 * h); }
+
+const XLO = 0, XHI = 10;
+// locate the global minimum once by brute force (it's 1D — scan it)
+let MIN_X = 0, MIN_L = Infinity;
+for (let x = XLO; x <= XHI; x += 0.001) if (L(x) < MIN_L) { MIN_L = L(x); MIN_X = x; }
+
+// --- state ---
+const START_X = 1.0;
+let schedName = 'cosine + warmup';
+let runners, t, playing = false, lastStep = 0;
+
+// Box-Muller gaussian — the "mini-batch" noise injected into every
+// gradient. Both runners get the SAME noise sample each step, so the
+// only difference between their trajectories is the schedule.
+function gauss() {
+  const u = Math.random() || 1e-9, v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function reset() {
+  runners = [
+    { name: 'schedule', color: '#4cc9f0', x: START_X, lossHist: [L(START_X)],
+      lr: tt => SCHEDULES[schedName](tt, lr0(), totalT(), warmT()) },
+    { name: 'constant', color: '#fbbf24', x: START_X, lossHist: [L(START_X)],
+      lr: () => lr0() },
+  ];
+  t = 0;
+  draw();
+}
+
+function stepOnce() {
+  if (t >= totalT()) return;
+  const noise = 0.35 * gauss();           // shared noise: fair race
+  for (const r of runners) {
+    // the update rule itself: x ← x − α(t)·(∇L + noise)
+    r.x -= r.lr(t) * (dL(r.x) + noise);
+    r.x = Math.max(XLO, Math.min(XHI, r.x));   // clamp so divergence stays visible
+    r.lossHist.push(L(r.x));
+  }
+  t++;
+}
+
+// --- sliders & buttons ---
+const $ = id => document.getElementById(id);
+const lr0 = () => Math.pow(10, parseFloat($('lr0').value));
+const totalT = () => parseInt($('T').value);
+const warmT = () => Math.min(parseInt($('warm').value), totalT() - 10);
+$('lr0').oninput = () => { $('lrVal').textContent = lr0().toFixed(2); reset(); };
+$('T').oninput = () => { $('TVal').textContent = totalT(); reset(); };
+$('warm').oninput = () => { $('warmVal').textContent = warmT(); reset(); };
+$('speed').oninput = () => $('speedVal').textContent = $('speed').value + ' steps/s';
+
+const schedRow = $('schedRow');
+for (const name of Object.keys(SCHEDULES)) {
+  const b = document.createElement('button');
+  b.textContent = name;
+  b.onclick = () => {
+    schedName = name;
+    [...schedRow.children].forEach(c => c.classList.toggle('active', c === b));
+    reset();
+  };
+  if (name === schedName) b.classList.add('active');
+  schedRow.appendChild(b);
+}
+
+const playBtn = $('playBtn');
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+  if (playing) requestAnimationFrame(tick);
+};
+$('resetBtn').onclick = reset;
+
+// --- canvases (hidpi setup) ---
+function ctx2d(id, w, h) {
+  const c = $(id), x = c.getContext('2d'), r = window.devicePixelRatio || 1;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  c.width = w * r; c.height = h * r; x.scale(r, r);
+  return x;
+}
+const lrCtx = ctx2d('lrChart', 620, 200);
+const landCtx = ctx2d('land', 620, 250);
+const lossCtx = ctx2d('lossChart', 276, 110);
+
+// --- panel 1: the LR curve, with a dot riding it ---
+function drawLR() {
+  const W = 620, H = 200, PAD = 8;
+  lrCtx.clearRect(0, 0, W, H);
+  lrCtx.fillStyle = '#101018'; lrCtx.fillRect(0, 0, W, H);
+  const T = totalT(), a0 = lr0();
+  const px = tt => PAD + tt / T * (W - 2 * PAD);
+  const py = a => H - PAD - a / a0 * (H - 2 * PAD - 16);
+
+  // constant baseline as a dashed reference line
+  lrCtx.strokeStyle = 'rgba(251,191,36,0.45)'; lrCtx.setLineDash([5, 5]); lrCtx.lineWidth = 1.5;
+  lrCtx.beginPath(); lrCtx.moveTo(px(0), py(a0)); lrCtx.lineTo(px(T), py(a0)); lrCtx.stroke();
+  lrCtx.setLineDash([]);
+
+  // warmup zone shading (only meaningful for the warmup schedule)
+  if (schedName === 'cosine + warmup' && warmT() > 0) {
+    lrCtx.fillStyle = 'rgba(76,201,240,0.07)';
+    lrCtx.fillRect(px(0), PAD, px(warmT()) - px(0), H - 2 * PAD);
+    lrCtx.fillStyle = 'rgba(76,201,240,0.5)'; lrCtx.font = '10px sans-serif'; lrCtx.textAlign = 'left';
+    lrCtx.fillText('warmup', px(0) + 4, PAD + 12);
+  }
+
+  // the schedule curve itself
+  lrCtx.save();
+  lrCtx.strokeStyle = '#4cc9f0'; lrCtx.lineWidth = 2.5;
+  lrCtx.shadowColor = '#4cc9f0'; lrCtx.shadowBlur = 6;
+  lrCtx.beginPath();
+  for (let tt = 0; tt <= T; tt++) {
+    const a = SCHEDULES[schedName](tt, a0, T, warmT());
+    tt === 0 ? lrCtx.moveTo(px(tt), py(a)) : lrCtx.lineTo(px(tt), py(a));
+  }
+  lrCtx.stroke();
+  lrCtx.restore();
+
+  // the moving dot = "you are here" in the schedule
+  const cur = SCHEDULES[schedName](Math.min(t, T), a0, T, warmT());
+  lrCtx.save();
+  lrCtx.shadowColor = '#4cc9f0'; lrCtx.shadowBlur = 14;
+  lrCtx.fillStyle = '#fff';
+  lrCtx.beginPath(); lrCtx.arc(px(Math.min(t, T)), py(cur), 5.5, 0, Math.PI * 2); lrCtx.fill();
+  lrCtx.restore();
+
+  lrCtx.fillStyle = '#5d5d72'; lrCtx.font = '10.5px sans-serif';
+  lrCtx.textAlign = 'left'; lrCtx.fillText('α = ' + a0.toFixed(2), PAD + 4, py(a0) - 6);
+  lrCtx.textAlign = 'right'; lrCtx.fillText('step ' + T, W - PAD - 2, H - PAD - 4);
+}
+
+// --- panel 2: the landscape and the two balls ---
+function drawLand() {
+  const W = 620, H = 250, PAD = 10;
+  landCtx.clearRect(0, 0, W, H);
+  landCtx.fillStyle = '#101018'; landCtx.fillRect(0, 0, W, H);
+  let maxL = 0;
+  for (let x = XLO; x <= XHI; x += 0.02) maxL = Math.max(maxL, L(x));
+  const px = x => PAD + (x - XLO) / (XHI - XLO) * (W - 2 * PAD);
+  const py = l => H - PAD - 14 - (l - MIN_L) / (maxL - MIN_L) * (H - 2 * PAD - 30);
+
+  // the curve, filled underneath so it reads as terrain
+  landCtx.beginPath();
+  landCtx.moveTo(px(XLO), H - PAD);
+  for (let x = XLO; x <= XHI; x += 0.02) landCtx.lineTo(px(x), py(L(x)));
+  landCtx.lineTo(px(XHI), H - PAD); landCtx.closePath();
+  landCtx.fillStyle = 'rgba(67,97,238,0.12)'; landCtx.fill();
+  landCtx.strokeStyle = '#4361ee'; landCtx.lineWidth = 2;
+  landCtx.beginPath();
+  for (let x = XLO; x <= XHI; x += 0.02) x === XLO ? landCtx.moveTo(px(x), py(L(x))) : landCtx.lineTo(px(x), py(L(x)));
+  landCtx.stroke();
+
+  // global minimum star
+  landCtx.save();
+  landCtx.shadowColor = 'rgba(74,222,128,0.8)'; landCtx.shadowBlur = 10;
+  landCtx.fillStyle = '#4ade80'; landCtx.font = '700 15px sans-serif'; landCtx.textAlign = 'center';
+  landCtx.fillText('★', px(MIN_X), py(MIN_L) + 20);
+  landCtx.restore();
+
+  // the balls (constant first so the schedule ball draws on top)
+  for (const r of [...runners].reverse()) {
+    landCtx.save();
+    landCtx.shadowColor = r.color; landCtx.shadowBlur = 12;
+    landCtx.fillStyle = r.color;
+    landCtx.beginPath(); landCtx.arc(px(r.x), py(L(r.x)) - 7, 7, 0, Math.PI * 2); landCtx.fill();
+    landCtx.restore();
+    landCtx.strokeStyle = '#0b0b10'; landCtx.lineWidth = 2;
+    landCtx.beginPath(); landCtx.arc(px(r.x), py(L(r.x)) - 7, 7, 0, Math.PI * 2); landCtx.stroke();
+  }
+}
+
+// --- panel 3: loss-vs-step mini chart, both runners overlaid ---
+function drawLoss() {
+  const W = 276, H = 110, PAD = 4;
+  lossCtx.clearRect(0, 0, W, H);
+  const T = totalT();
+  let maxL = MIN_L + 1e-9;
+  for (const r of runners) for (const l of r.lossHist) maxL = Math.max(maxL, l);
+  const px = i => PAD + i / T * (W - 2 * PAD);
+  const py = l => H - PAD - (l - MIN_L) / (maxL - MIN_L) * (H - 2 * PAD);
+  // line at the best achievable loss — "settling in" = hugging this line
+  lossCtx.strokeStyle = 'rgba(74,222,128,0.35)'; lossCtx.setLineDash([3, 4]); lossCtx.lineWidth = 1;
+  lossCtx.beginPath(); lossCtx.moveTo(PAD, py(MIN_L)); lossCtx.lineTo(W - PAD, py(MIN_L)); lossCtx.stroke();
+  lossCtx.setLineDash([]);
+  for (const r of [...runners].reverse()) {
+    lossCtx.strokeStyle = r.color; lossCtx.lineWidth = 1.6; lossCtx.globalAlpha = 0.9;
+    lossCtx.beginPath();
+    r.lossHist.forEach((l, i) => i === 0 ? lossCtx.moveTo(px(i), py(l)) : lossCtx.lineTo(px(i), py(l)));
+    lossCtx.stroke();
+    lossCtx.globalAlpha = 1;
+  }
+}
+
+// --- live narration: tell the user which PHASE the run is in ---
+function annotate() {
+  const ann = $('annotation');
+  const T = totalT(), Tw = warmT();
+  const hasWarm = schedName === 'cosine + warmup';
+  const curLR = SCHEDULES[schedName](Math.min(t, T), lr0(), T, Tw);
+  if (t === 0) {
+    ann.innerHTML = `<b>Ready.</b> Both balls start at x = ${START_X} with identical gradient noise. The <span style="color:var(--const)">amber ghost</span> keeps α = ${lr0().toFixed(2)} forever; the <span style="color:var(--sched)">cyan ball</span> follows <b>${schedName}</b>. Press Play.`;
+  } else if (hasWarm && t < Tw) {
+    ann.innerHTML = `<b>Warmup: LR ramping</b> (${(100 * t / Tw).toFixed(0)}% of the ramp). Steps are deliberately tiny while the model is in its most fragile state — in real training this is when gradients are huge and Adam's statistics are unreliable.`;
+  } else if (t < 0.45 * T) {
+    ann.innerHTML = `<b>Exploration: LR near peak.</b> Big steps cover distance fast and hop straight over the small local dips — notice both balls clearing bumps a tiny LR would get trapped in.`;
+  } else if (t < T && curLR > 0.25 * lr0()) {
+    ann.innerHTML = `<b>Decay beginning.</b> The cyan ball's steps are shrinking (α = ${curLR.toFixed(3)}); the amber ghost still takes full-size kicks. Watch the loss chart: the cyan trace is starting to calm down.`;
+  } else if (t < T) {
+    ann.innerHTML = `<b>Decay: settling into the minimum.</b> α = ${curLR.toFixed(3)} — small enough that the noise ball around the ★ has shrunk to nearly nothing. The amber ghost keeps bouncing: its noise ball never shrinks, because its α never does.`;
+  } else {
+    const fs = runners[0].lossHist[runners[0].lossHist.length - 1];
+    const fc = runners[1].lossHist[runners[1].lossHist.length - 1];
+    ann.innerHTML = `<b>Done.</b> Final loss — <span style="color:var(--sched)">${schedName}: ${fs.toFixed(3)}</span> vs <span style="color:var(--const)">constant: ${fc.toFixed(3)}</span> (best possible ${MIN_L.toFixed(3)}). Constant LR converges to a <i>distribution</i> around the minimum, not the minimum. Now try plain cosine with a huge α₀ and see why warmup exists.`;
+  }
+}
+
+function draw() {
+  drawLR(); drawLand(); drawLoss();
+  $('stepStat').textContent = t;
+  $('lrStat').textContent = SCHEDULES[schedName](Math.min(t, totalT()), lr0(), totalT(), warmT()).toFixed(3);
+  $('lossS').textContent = L(runners[0].x).toFixed(3);
+  $('lossC').textContent = L(runners[1].x).toFixed(3);
+  annotate();
+}
+
+function tick(now) {
+  if (!playing) return;
+  const interval = 1000 / parseInt($('speed').value);
+  if (now - lastStep > interval) {
+    lastStep = now;
+    stepOnce(); draw();
+    if (t >= totalT()) { playing = false; playBtn.textContent = '▶ Play'; }
+  }
+  requestAnimationFrame(tick);
+}
+
+reset();
+</script>
+</body>
+</html>
