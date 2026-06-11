@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Probability — Uncertainty, Quantified</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .layout + .layout { margin-top: 26px; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  .section-title { font-size: 17px; font-weight: 700; margin: 34px 0 14px; color: var(--text); letter-spacing: -0.01em; }
+  .big { font-size: 26px !important; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 00 foundations</div>
+<h1>Uncertainty, Quantified</h1>
+<p class="subtitle">Two pillars of probability, live. <b>Top:</b> drop balls that each take n coin-flip steps — chaos per ball, yet the pile is always the same bell curve (the Central Limit Theorem). <b>Bottom:</b> Bayes' rule on a population of 10,000 — watch a "99% accurate" test produce mostly false alarms when the disease is rare.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="galton" width="580" height="400"></canvas>
+    <div class="caption">each ball = sum of n biased coin flips · cyan bars = live histogram · magenta curve = the Gaussian the CLT predicts</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="dropBtn">● Drop 100 balls</button>
+      <button id="playBtn">▶ Auto-drop</button>
+      <button id="clearBtn">↺ Clear</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>n — flips per ball <span class="val" id="nVal">30</span></label>
+        <input type="range" id="n" min="5" max="80" step="1" value="30">
+      </div>
+      <div class="slider-row">
+        <label>p — bias of each flip <span class="val" id="pVal">0.50</span></label>
+        <input type="range" id="p" min="0.05" max="0.95" step="0.01" value="0.5">
+      </div>
+      <div class="hint">A single flip is the least bell-shaped data imaginable — yet the <i>sums</i> always pile into a Gaussian. Skew p and the bell just moves and leans; it never stops being a bell.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">balls dropped</div><div class="v" id="ballsVal">0</div></div>
+        <div class="stat"><div class="k">empirical mean</div><div class="v" style="color:var(--cyan)" id="meanVal">—</div></div>
+        <div class="stat"><div class="k">empirical sd</div><div class="v" style="color:var(--cyan)" id="sdVal">—</div></div>
+        <div class="stat"><div class="k">CLT predicts sd</div><div class="v" style="color:var(--magenta)" id="sdTheory">—</div></div>
+      </div>
+    </div>
+
+    <div class="card annotation" id="annotation1"></div>
+  </div>
+</div>
+
+<div class="section-title">Bayes' rule: the test is good — is the alert?</div>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="pop" width="580" height="420"></canvas>
+    <div class="caption">10,000 people · magenta = sick &amp; caught · red ring = sick &amp; missed · amber = healthy but flagged · grey = healthy &amp; cleared</div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <div class="slider-row">
+        <label>prevalence P(D) <span class="val" id="prevVal">0.5%</span></label>
+        <input type="range" id="prev" min="-3" max="-0.7" step="0.01" value="-2.3">
+      </div>
+      <div class="slider-row">
+        <label>sensitivity P(+|D) <span class="val" id="sensVal">99%</span></label>
+        <input type="range" id="sens" min="0.5" max="0.999" step="0.001" value="0.99">
+      </div>
+      <div class="slider-row">
+        <label>specificity P(−|¬D) <span class="val" id="specVal">99%</span></label>
+        <input type="range" id="spec" min="0.5" max="0.999" step="0.001" value="0.99">
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat wide"><div class="k">P(disease | positive test)</div><div class="v big" id="postVal">—</div></div>
+        <div class="stat"><div class="k">true positives</div><div class="v" style="color:var(--magenta)" id="tpVal">—</div></div>
+        <div class="stat"><div class="k">false positives</div><div class="v" style="color:var(--amber)" id="fpVal">—</div></div>
+      </div>
+      <div id="bayesBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation2"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// PANEL 1 — CENTRAL LIMIT THEOREM
+// Each ball takes n steps; each step is a coin flip with bias p.
+// Its final bin is the NUMBER OF HEADS — a Binomial(n, p) draw.
+// CLT: that sum is ≈ Normal(np, sqrt(np(1-p))), so the histogram
+// must converge to the magenta curve. Nothing is faked: every
+// ball is n real random() calls.
+//
+// PANEL 2 — BAYES' RULE
+// P(D|+) = sens·prev / (sens·prev + (1-spec)·(1-prev))
+// The dot grid shows the exact integer counts in 10,000 people.
+// ============================================================
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const galton = document.getElementById('galton'), gctx = galton.getContext('2d');
+const pop = document.getElementById('pop'), pctx = pop.getContext('2d');
+const G = hidpi(galton), B = hidpi(pop);
+const PAD = 36;
+
+// ---------- panel 1 state ----------
+const nSlider = document.getElementById('n'), pSlider = document.getElementById('p');
+let counts = [], totalBalls = 0, sumX = 0, sumX2 = 0;
+let queue = 0;            // balls waiting to be flipped this frame
+let falling = [];         // {bin, y, vy} — purely visual ball sprites
+let autoDrop = false;
+
+function resetHist() {
+  counts = new Array(+nSlider.value + 1).fill(0);
+  totalBalls = 0; sumX = 0; sumX2 = 0; queue = 0; falling = [];
+}
+
+// one ball = n genuine coin flips; the bin is the head count
+function dropOneBall() {
+  const n = +nSlider.value, p = +pSlider.value;
+  let heads = 0;
+  for (let i = 0; i < n; i++) if (Math.random() < p) heads++;
+  counts[heads]++;
+  totalBalls++; sumX += heads; sumX2 += heads * heads;
+  if (falling.length < 60) falling.push({ bin: heads, y: PAD, vy: 2 + Math.random() * 2 });
+}
+
+const binX = (k, n) => PAD + (k + 0.5) / (n + 1) * (G.w - 2 * PAD);
+
+function drawGalton() {
+  const n = +nSlider.value, p = +pSlider.value;
+  gctx.clearRect(0, 0, G.w, G.h);
+
+  // faint grid
+  gctx.strokeStyle = 'rgba(255,255,255,0.035)'; gctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (G.w - 2 * PAD) / 10, gy = PAD + i * (G.h - 2 * PAD) / 10;
+    gctx.beginPath(); gctx.moveTo(gx, PAD); gctx.lineTo(gx, G.h - PAD); gctx.stroke();
+    gctx.beginPath(); gctx.moveTo(PAD, gy); gctx.lineTo(G.w - PAD, gy); gctx.stroke();
+  }
+  gctx.strokeStyle = '#2a2a38'; gctx.lineWidth = 1.5;
+  gctx.beginPath(); gctx.moveTo(PAD, G.h - PAD); gctx.lineTo(G.w - PAD, G.h - PAD); gctx.stroke();
+
+  const peak = Math.max(...counts, 1);
+  const bw = (G.w - 2 * PAD) / (n + 1);
+
+  // live histogram of head-counts
+  for (let k = 0; k <= n; k++) {
+    if (!counts[k]) continue;
+    const hgt = counts[k] / peak * (G.h - 2 * PAD - 30);
+    gctx.save();
+    gctx.shadowColor = 'rgba(76,201,240,0.5)'; gctx.shadowBlur = 6;
+    gctx.fillStyle = 'rgba(76,201,240,0.75)';
+    gctx.fillRect(binX(k, n) - bw * 0.42, G.h - PAD - hgt, bw * 0.84, hgt);
+    gctx.restore();
+  }
+
+  // the CLT's prediction: Normal(np, sqrt(np(1-p))) scaled to the
+  // same units as the bars (probability per bin × total balls)
+  if (totalBalls > 0) {
+    const mu = n * p, sd = Math.sqrt(n * p * (1 - p));
+    const pdf = x => Math.exp(-((x - mu) ** 2) / (2 * sd * sd)) / (sd * Math.sqrt(2 * Math.PI));
+    gctx.save();
+    gctx.shadowColor = 'rgba(247,37,133,0.55)'; gctx.shadowBlur = 10;
+    gctx.strokeStyle = '#f72585'; gctx.lineWidth = 2.2;
+    gctx.beginPath();
+    for (let x = 0; x <= n; x += 0.1) {
+      const yPix = G.h - PAD - (pdf(x) * totalBalls) / peak * (G.h - 2 * PAD - 30);
+      x === 0 ? gctx.moveTo(binX(x, n), yPix) : gctx.lineTo(binX(x, n), yPix);
+    }
+    gctx.stroke();
+    gctx.restore();
+  }
+
+  // visual falling balls (the math already landed; this is theater)
+  falling = falling.filter(b => b.y < G.h - PAD - 6);
+  for (const b of falling) {
+    b.y += b.vy; b.vy += 0.5;                 // gravity
+    gctx.save();
+    gctx.shadowColor = 'rgba(251,191,36,0.8)'; gctx.shadowBlur = 6;
+    gctx.fillStyle = '#fbbf24';
+    gctx.beginPath(); gctx.arc(binX(b.bin, n), b.y, 3, 0, Math.PI * 2); gctx.fill();
+    gctx.restore();
+  }
+
+  // readouts: all from the actual counts
+  document.getElementById('nVal').textContent = n;
+  document.getElementById('pVal').textContent = p.toFixed(2);
+  document.getElementById('ballsVal').textContent = totalBalls.toLocaleString();
+  const muT = n * p, sdT = Math.sqrt(n * p * (1 - p));
+  document.getElementById('sdTheory').textContent = sdT.toFixed(3);
+  if (totalBalls > 1) {
+    const mean = sumX / totalBalls;
+    const sd = Math.sqrt(Math.max(0, sumX2 / totalBalls - mean * mean));
+    document.getElementById('meanVal').textContent = mean.toFixed(3);
+    document.getElementById('sdVal').textContent = sd.toFixed(3);
+    const ann = document.getElementById('annotation1');
+    if (totalBalls < 300) {
+      ann.style.borderLeftColor = 'var(--cyan)';
+      ann.innerHTML = `<b>${totalBalls} balls.</b> Still ragged — with few samples the histogram is noise wearing a histogram costume. The CLT predicts mean np = ${muT.toFixed(1)} and sd √(np(1−p)) = ${sdT.toFixed(2)}; so far the pile says mean ${mean.toFixed(1)}, sd ${sd.toFixed(2)}. Keep dropping.`;
+    } else {
+      const off = Math.abs(sd - sdT);
+      ann.style.borderLeftColor = 'var(--green)';
+      ann.innerHTML = `<b>${totalBalls.toLocaleString()} balls.</b> The bars are hugging the magenta Gaussian — empirical sd ${sd.toFixed(3)} vs the CLT's ${sdT.toFixed(3)} (off by ${off.toFixed(3)}). No ball knows about bell curves; each just flipped ${n} coins. The shape is an emergent law. Now skew <b>p</b> and watch the bell relocate, not deform.`;
+    }
+  } else {
+    document.getElementById('meanVal').textContent = '—';
+    document.getElementById('sdVal').textContent = '—';
+    const ann = document.getElementById('annotation1');
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Ready.</b> Each ball will take <b>${n}</b> steps; each step is a coin flip landing heads with probability <b>${p.toFixed(2)}</b>. Its bin is the number of heads. Drop 100 and watch order assemble itself out of pure randomness.`;
+  }
+}
+
+// ---------- panel 2: Bayes on 10,000 people ----------
+const prevSlider = document.getElementById('prev');
+const sensSlider = document.getElementById('sens');
+const specSlider = document.getElementById('spec');
+const N_POP = 10000, COLS = 125, ROWS = 80;
+
+function drawBayes() {
+  const prev = Math.pow(10, +prevSlider.value);      // log slider → 0.1%..20%
+  const sens = +sensSlider.value, spec = +specSlider.value;
+
+  // exact integer accounting of the population
+  const sick = Math.max(1, Math.round(N_POP * prev));
+  const tp = Math.round(sick * sens);                // sick & caught
+  const fn = sick - tp;                              // sick & missed
+  const fp = Math.round((N_POP - sick) * (1 - spec));// healthy & flagged
+  const posterior = tp + fp > 0 ? tp / (tp + fp) : 0;
+  // the formula, for the readout check: identical arithmetic in ratio form
+  const exact = (sens * prev) / (sens * prev + (1 - spec) * (1 - prev));
+
+  pctx.clearRect(0, 0, B.w, B.h);
+  const cw = (B.w - 24) / COLS, ch = (B.h - 24) / ROWS;
+  // dots in order: TP, FN, FP, TN — the sick cluster sits top-left so
+  // you can see how tiny it is next to the amber false-positive crowd
+  for (let i = 0; i < N_POP; i++) {
+    const col = i % COLS, row = (i / COLS) | 0;
+    const x = 12 + col * cw + cw / 2, y = 12 + row * ch + ch / 2;
+    if (i < tp) {                                    // sick, test positive
+      pctx.fillStyle = '#f72585';
+      pctx.beginPath(); pctx.arc(x, y, 1.9, 0, Math.PI * 2); pctx.fill();
+    } else if (i < sick) {                           // sick, test negative
+      pctx.strokeStyle = '#f87171'; pctx.lineWidth = 1;
+      pctx.beginPath(); pctx.arc(x, y, 1.7, 0, Math.PI * 2); pctx.stroke();
+    } else if (i < sick + fp) {                      // healthy, test positive
+      pctx.fillStyle = '#fbbf24';
+      pctx.beginPath(); pctx.arc(x, y, 1.9, 0, Math.PI * 2); pctx.fill();
+    } else {                                         // healthy, test negative
+      pctx.fillStyle = 'rgba(255,255,255,0.10)';
+      pctx.beginPath(); pctx.arc(x, y, 1.2, 0, Math.PI * 2); pctx.fill();
+    }
+  }
+
+  document.getElementById('prevVal').textContent = (prev * 100).toFixed(prev < 0.01 ? 2 : 1) + '%';
+  document.getElementById('sensVal').textContent = (sens * 100).toFixed(1) + '%';
+  document.getElementById('specVal').textContent = (spec * 100).toFixed(1) + '%';
+  const postEl = document.getElementById('postVal');
+  postEl.textContent = (exact * 100).toFixed(1) + '%';
+  postEl.style.color = exact < 0.5 ? 'var(--amber)' : 'var(--green)';
+  document.getElementById('tpVal').textContent = tp.toLocaleString();
+  document.getElementById('fpVal').textContent = fp.toLocaleString();
+
+  const badge = document.getElementById('bayesBadge');
+  badge.innerHTML = exact < 0.5
+    ? '<span class="badge" style="background:rgba(251,191,36,0.15);color:var(--amber)">⚠ most positives are false alarms</span>'
+    : '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ a positive test is now informative</span>';
+
+  const ann = document.getElementById('annotation2');
+  if (exact < 0.5) {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>Base-rate neglect, live.</b> Of 10,000 people only <b>${sick.toLocaleString()}</b> are sick. The test catches ${tp.toLocaleString()} of them (magenta) — but it also flags <b>${fp.toLocaleString()}</b> healthy people (amber), because ${(100 - spec * 100).toFixed(1)}% of a huge crowd is still a crowd. A positive result means just a <b>${(exact * 100).toFixed(1)}%</b> chance of disease. The test's "accuracy" never changed — the prior did all the damage.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>The prior is pulling its weight.</b> With prevalence at ${(prev * 100).toFixed(1)}%, the ${tp.toLocaleString()} true positives (magenta) now outnumber the ${fp.toLocaleString()} false alarms (amber), so P(disease | positive) = <b>${(exact * 100).toFixed(1)}%</b>. Same test, different population — this is why screening only symptomatic patients (raising the prior) beats blanket testing.`;
+  }
+}
+
+// ---------- controls ----------
+nSlider.oninput = resetHist;
+pSlider.oninput = resetHist;
+document.getElementById('dropBtn').onclick = () => queue += 100;
+document.getElementById('clearBtn').onclick = resetHist;
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  autoDrop = !autoDrop;
+  playBtn.textContent = autoDrop ? '⏸ Stop' : '▶ Auto-drop';
+};
+[prevSlider, sensSlider, specSlider].forEach(s => s.oninput = drawBayes);
+
+// ---------- render loop ----------
+function frame() {
+  if (autoDrop) queue += 4;
+  const burst = Math.min(queue, 12);          // process a few per frame so the pile grows visibly
+  for (let i = 0; i < burst; i++) dropOneBall();
+  queue -= burst;
+  drawGalton();
+  requestAnimationFrame(frame);
+}
+resetHist();
+drawBayes();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

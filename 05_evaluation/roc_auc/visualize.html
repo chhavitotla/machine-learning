@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROC & AUC — Watch the Curve Trace Itself</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button.toggled { background: linear-gradient(135deg, #f72585, #b5179e); border: none; color: #fff; box-shadow: 0 4px 18px rgba(247,37,133,0.3); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 05 evaluation</div>
+<h1>ROC Curve &amp; AUC</h1>
+<p class="subtitle">Hit <b>Sweep</b>: the threshold glides across the two score distributions while the ROC curve <b>traces itself</b> from every (FPR,&nbsp;TPR) it passes through — the area filling in as AUC counts up. Then squash the separation to ~0 and re-sweep: the curve collapses onto the diagonal. Toggle <b>PR view</b> and shrink the positive class to see what ROC refuses to notice.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <div class="chart-label">score distributions · gliding threshold</div>
+    <canvas id="dist" width="580" height="180"></canvas>
+    <div class="chart-label" style="margin-top:14px" id="curveLabel">roc curve · tpr vs fpr</div>
+    <canvas id="curve" width="580" height="330"></canvas>
+    <div class="caption" id="capt">every traced point = one threshold's (false-positive rate, true-positive rate), computed from 240 real samples</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Sweep</button>
+      <button id="stepBtn">Step</button>
+      <button id="prBtn">PR view</button>
+      <button id="dataBtn">🎲 Re-sample</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Class separation <span class="val" id="sepVal">0.30</span></label>
+        <input type="range" id="sep" min="0" max="0.6" step="0.01" value="0.30">
+      </div>
+      <div class="slider-row">
+        <label>Positive fraction <span class="val" id="imbVal">50%</span></label>
+        <input type="range" id="imb" min="0.05" max="0.5" step="0.05" value="0.5">
+      </div>
+      <div class="hint">Drag the imbalance from 50% to 5% and re-sweep in both views: the <b>ROC curve barely moves</b> (TPR and FPR each condition on one true class), while the <b>PR curve sags</b> — precision feels every extra negative. That asymmetry is the interview answer.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat wide"><div class="k" id="aucK">AUC (area so far)</div><div class="v" style="color:var(--green);font-size:22px" id="aucV">0.000</div></div>
+        <div class="stat"><div class="k">threshold</div><div class="v" style="color:var(--cyan)" id="thrV">—</div></div>
+        <div class="stat"><div class="k" id="ptK">(FPR, TPR)</div><div class="v" style="color:var(--magenta);font-size:13px" id="ptV">—</div></div>
+        <div class="stat"><div class="k">TP / FP</div><div class="v" id="tpfpV">—</div></div>
+        <div class="stat"><div class="k">FN / TN</div><div class="v" id="fntnV">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// ROC: sweep the threshold over real scores, and at each stop
+// record  FPR = FP/(FP+TN)  (x)  and  TPR = TP/(TP+FN)  (y).
+// AUC = area under that curve = P(random positive outranks a
+// random negative). Both rates condition on ONE true class, so
+// class imbalance cancels out of ROC — but NOT out of precision,
+// which is why the PR view sags when positives get rare.
+// ============================================================
+
+const dist = document.getElementById('dist');
+const dctx = dist.getContext('2d');
+const curve = document.getElementById('curve');
+const cctx = curve.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const D = hidpi(dist);
+const C = hidpi(curve);
+const PAD = 42;
+
+// --- seeded RNG (mulberry32) + Box–Muller, so samples are reproducible ---
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(rng) {
+  const u1 = Math.max(rng(), 1e-9), u2 = rng();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+let seed = 11;
+
+// --- state ---
+const N = 240;
+const SD = 0.11;
+let samples = [];          // {score, y, jitter}
+let threshold = 0.99;      // glides 0.99 → 0.01 during a sweep
+let sweeping = false;
+let traced = [];           // [{t, fpr, tpr, prec, rec}] — the curve being drawn
+let prMode = false;
+
+const sepSlider = document.getElementById('sep');
+const imbSlider = document.getElementById('imb');
+
+function means() {
+  const sep = parseFloat(sepSlider.value);
+  return { negMu: 0.5 - sep / 2 - 0.08, posMu: 0.5 + sep / 2 + 0.08 };
+}
+
+function makeData() {
+  const rng = mulberry32(seed);
+  const { negMu, posMu } = means();
+  const nPos = Math.max(3, Math.round(N * parseFloat(imbSlider.value)));
+  samples = [];
+  for (let i = 0; i < N; i++) {
+    const y = i < nPos ? 1 : 0;
+    const score = Math.min(0.99, Math.max(0.01, (y ? posMu : negMu) + SD * gauss(rng)));
+    samples.push({ score, y, jitter: rng() });
+  }
+}
+
+function confusion(t) {
+  let tp = 0, fp = 0, tn = 0, fn = 0;
+  for (const s of samples) {
+    if (s.score >= t) { s.y ? tp++ : fp++; } else { s.y ? fn++ : tn++; }
+  }
+  return { tp, fp, tn, fn };
+}
+
+// one threshold stop → one point in BOTH coordinate systems
+function curvePoint(t) {
+  const m = confusion(t);
+  return {
+    t,
+    fpr: m.fp / Math.max(m.fp + m.tn, 1),     // x of ROC
+    tpr: m.tp / Math.max(m.tp + m.fn, 1),     // y of ROC (= recall)
+    rec: m.tp / Math.max(m.tp + m.fn, 1),     // x of PR
+    prec: m.tp + m.fp ? m.tp / (m.tp + m.fp) : 1,  // y of PR
+    m,
+  };
+}
+
+// trapezoid area under whichever curve is showing, over what's traced SO FAR —
+// this is why the AUC readout literally counts up as the curve draws itself
+function areaSoFar() {
+  if (traced.length < 2) return 0;
+  let a = 0;
+  for (let i = 1; i < traced.length; i++) {
+    const p0 = traced[i - 1], p1 = traced[i];
+    const x0 = prMode ? p0.rec : p0.fpr, x1 = prMode ? p1.rec : p1.fpr;
+    const y0 = prMode ? p0.prec : p0.tpr, y1 = prMode ? p1.prec : p1.tpr;
+    a += (x1 - x0) * (y0 + y1) / 2;
+  }
+  return a;
+}
+
+function resetSweep() {
+  threshold = 0.99;
+  traced = [curvePoint(0.99)];
+}
+function startSweep() { resetSweep(); sweeping = true; playBtn.textContent = '⏸ Pause'; }
+
+// --- drawing: distributions panel ---
+const DX = s => PAD + s * (D.w - 2 * PAD);
+function pdf(x, mu) { return Math.exp(-((x - mu) ** 2) / (2 * SD * SD)); }
+
+function drawDist() {
+  dctx.clearRect(0, 0, D.w, D.h);
+  const { negMu, posMu } = means();
+  const nPos = samples.filter(s => s.y).length;
+  const top = 10, bottom = D.h - 38;
+
+  // class-weighted gaussian humps — same visual language as confusion_matrix
+  const drawHump = (mu, count, color, fill) => {
+    const pts = [];
+    for (let i = 0; i <= 100; i++) {
+      const x = i / 100;
+      pts.push([DX(x), bottom - pdf(x, mu) * (count / N) * 1.9 * (bottom - top)]);
+    }
+    dctx.beginPath(); dctx.moveTo(pts[0][0], bottom);
+    pts.forEach(([x, y]) => dctx.lineTo(x, Math.max(y, top)));
+    dctx.lineTo(pts[100][0], bottom); dctx.closePath();
+    dctx.fillStyle = fill; dctx.fill();
+    dctx.save(); dctx.shadowColor = color; dctx.shadowBlur = 8;
+    dctx.strokeStyle = color; dctx.lineWidth = 2;
+    dctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? dctx.moveTo(x, Math.max(y, top)) : dctx.lineTo(x, Math.max(y, top))); dctx.stroke();
+    dctx.restore();
+  };
+  drawHump(negMu, N - nPos, '#7a8db0', 'rgba(122,141,176,0.10)');
+  drawHump(posMu, nPos, '#f72585', 'rgba(247,37,133,0.08)');
+
+  // sample dots in a thin strip, colored by side of the threshold
+  for (const s of samples) {
+    const caught = s.score >= threshold;
+    dctx.fillStyle = s.y
+      ? (caught ? '#4ade80' : '#fbbf24')                  // positives: TP green / FN amber
+      : (caught ? '#f87171' : 'rgba(122,141,176,0.45)');  // negatives: FP red / TN quiet
+    dctx.beginPath();
+    dctx.arc(DX(s.score), bottom + 8 + s.jitter * 16, 2.4, 0, Math.PI * 2);
+    dctx.fill();
+  }
+
+  // the gliding threshold line
+  dctx.save();
+  dctx.shadowColor = 'rgba(76,201,240,0.7)'; dctx.shadowBlur = 12;
+  dctx.strokeStyle = '#4cc9f0'; dctx.lineWidth = 2.5;
+  dctx.beginPath(); dctx.moveTo(DX(threshold), 6); dctx.lineTo(DX(threshold), D.h - 8); dctx.stroke();
+  dctx.restore();
+  dctx.fillStyle = '#4cc9f0'; dctx.font = '600 10px monospace'; dctx.textAlign = 'center';
+  dctx.fillText('t=' + threshold.toFixed(2), DX(threshold), 14);
+}
+
+// --- drawing: the curve panel (ROC or PR) ---
+const CPAD = 48;
+const CX = v => CPAD + v * (C.w - 2 * CPAD);
+const CY = v => C.h - 34 - v * (C.h - 34 - 14);
+
+function drawCurvePanel() {
+  cctx.clearRect(0, 0, C.w, C.h);
+  // grid
+  cctx.strokeStyle = 'rgba(255,255,255,0.04)'; cctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    cctx.beginPath(); cctx.moveTo(CX(i / 10), CY(0)); cctx.lineTo(CX(i / 10), CY(1)); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(CX(0), CY(i / 10)); cctx.lineTo(CX(1), CY(i / 10)); cctx.stroke();
+  }
+  // axes
+  cctx.strokeStyle = '#2a2a38'; cctx.lineWidth = 1.5;
+  cctx.beginPath(); cctx.moveTo(CX(0), CY(1)); cctx.lineTo(CX(0), CY(0)); cctx.lineTo(CX(1), CY(0)); cctx.stroke();
+  cctx.fillStyle = '#5d5d72'; cctx.font = '11px sans-serif'; cctx.textAlign = 'center';
+  cctx.fillText(prMode ? 'recall (TPR)' : 'false positive rate', CX(0.5), C.h - 10);
+  cctx.save(); cctx.translate(16, CY(0.5)); cctx.rotate(-Math.PI / 2);
+  cctx.fillText(prMode ? 'precision' : 'true positive rate', 0, 0); cctx.restore();
+  cctx.fillText('0', CX(0), C.h - 20); cctx.fillText('1', CX(1), C.h - 20);
+
+  // reference line: chance diagonal for ROC, baseline prevalence for PR
+  cctx.setLineDash([4, 5]); cctx.strokeStyle = 'rgba(154,154,176,0.35)'; cctx.lineWidth = 1;
+  cctx.beginPath();
+  if (prMode) {
+    const prev = samples.filter(s => s.y).length / N;   // random classifier's precision = prevalence
+    cctx.moveTo(CX(0), CY(prev)); cctx.lineTo(CX(1), CY(prev));
+  } else {
+    cctx.moveTo(CX(0), CY(0)); cctx.lineTo(CX(1), CY(1)); // AUC 0.5: ranking by coin flip
+  }
+  cctx.stroke(); cctx.setLineDash([]);
+
+  if (traced.length < 1) return;
+  const xs = p => prMode ? p.rec : p.fpr;
+  const ys = p => prMode ? p.prec : p.tpr;
+
+  // filled area under the traced-so-far curve — THIS is the AUC, growing live
+  cctx.beginPath();
+  cctx.moveTo(CX(xs(traced[0])), CY(0));
+  traced.forEach(p => cctx.lineTo(CX(xs(p)), CY(ys(p))));
+  cctx.lineTo(CX(xs(traced[traced.length - 1])), CY(0));
+  cctx.closePath();
+  const grad = cctx.createLinearGradient(0, CY(1), 0, CY(0));
+  grad.addColorStop(0, 'rgba(74,222,128,0.22)'); grad.addColorStop(1, 'rgba(74,222,128,0.03)');
+  cctx.fillStyle = grad; cctx.fill();
+
+  // the curve itself
+  cctx.save();
+  cctx.shadowColor = 'rgba(74,222,128,0.5)'; cctx.shadowBlur = 8;
+  cctx.strokeStyle = '#4ade80'; cctx.lineWidth = 2.5;
+  cctx.beginPath();
+  traced.forEach((p, i) => i === 0 ? cctx.moveTo(CX(xs(p)), CY(ys(p))) : cctx.lineTo(CX(xs(p)), CY(ys(p))));
+  cctx.stroke();
+  cctx.restore();
+
+  // the current threshold's point, riding the curve
+  const cur = traced[traced.length - 1];
+  cctx.save();
+  cctx.shadowColor = 'rgba(247,37,133,0.9)'; cctx.shadowBlur = 12;
+  cctx.fillStyle = '#f72585';
+  cctx.beginPath(); cctx.arc(CX(xs(cur)), CY(ys(cur)), 6, 0, Math.PI * 2); cctx.fill();
+  cctx.restore();
+  cctx.fillStyle = '#f72585'; cctx.font = '600 10px monospace'; cctx.textAlign = 'left';
+  cctx.fillText(`t=${cur.t.toFixed(2)}`, CX(xs(cur)) + 10, CY(ys(cur)) - 6);
+}
+
+// --- readouts + narration ---
+function updateReadout() {
+  const cur = traced[traced.length - 1] || curvePoint(threshold);
+  const a = areaSoFar();
+  const done = !sweeping && threshold <= 0.011;
+
+  document.getElementById('aucV').textContent = a.toFixed(3);
+  document.getElementById('aucK').textContent = (prMode ? 'PR-AUC' : 'AUC') + (done ? '' : ' (area so far)');
+  document.getElementById('thrV').textContent = cur.t.toFixed(2);
+  document.getElementById('ptK').textContent = prMode ? '(recall, precision)' : '(FPR, TPR)';
+  document.getElementById('ptV').textContent = prMode
+    ? `(${cur.rec.toFixed(2)}, ${cur.prec.toFixed(2)})`
+    : `(${cur.fpr.toFixed(2)}, ${cur.tpr.toFixed(2)})`;
+  document.getElementById('tpfpV').textContent = `${cur.m.tp} / ${cur.m.fp}`;
+  document.getElementById('fntnV').textContent = `${cur.m.fn} / ${cur.m.tn}`;
+
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = done
+    ? '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ sweep complete — full curve traced</span>'
+    : sweeping ? '<span class="badge" style="background:rgba(76,201,240,0.12);color:var(--cyan)">tracing…</span>' : '';
+
+  const ann = document.getElementById('annotation');
+  const sep = parseFloat(sepSlider.value);
+  const prev = samples.filter(s => s.y).length / N;
+  if (!done && traced.length < 3) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = '<b>Ready.</b> The threshold starts strict (far right): nothing is flagged, so TPR = FPR = 0 — the curve begins at the origin. Hit <b>Sweep</b> and watch it earn its way toward (1,1) as the threshold loosens.';
+  } else if (done && !prMode && a > 0.97) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Near-perfect separation.</b> AUC = ${a.toFixed(3)}: the sweep catches essentially every positive <i>before</i> it admits a single negative, so the curve shoots up the left wall then across the top — a step into the corner. AUC 1.0 means every positive outranks every negative.`;
+  } else if (done && !prMode && a < 0.6) {
+    ann.style.borderLeftColor = 'var(--red)';
+    ann.innerHTML = `<b>The diagonal of despair.</b> AUC = ${a.toFixed(3)} ≈ 0.5: with the distributions overlapping, each loosening of the threshold admits positives and negatives in proportion — TPR and FPR grow together. Your "classifier" ranks like a coin flip.`;
+  } else if (done && prMode && prev <= 0.15) {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>PR with rare positives (${Math.round(prev * 100)}%).</b> Flip back to ROC — it looks the same as at 50/50, because TPR and FPR each condition on one true class. But precision must fish ${samples.filter(s => s.y).length} positives out of ${N - samples.filter(s => s.y).length} negatives, so the PR curve sags (baseline = prevalence = ${prev.toFixed(2)}, the dashed line). When positives are rare, report PR.`;
+  } else if (done && prMode) {
+    ann.style.borderLeftColor = 'var(--magenta)';
+    ann.innerHTML = `<b>PR view.</b> Same sweep, new axes: recall across, precision up. The dashed baseline is the prevalence (${prev.toFixed(2)}) — a random ranker hovers there. Now drag the positive fraction to 5% and re-sweep: ROC won't flinch, PR will.`;
+  } else if (done) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Sweep complete.</b> AUC = ${a.toFixed(3)} — the probability a randomly drawn positive scores above a randomly drawn negative. No threshold appears in that sentence: AUC grades the <i>ranking</i>, not any one decision. Try separation ${sep < 0.3 ? 'higher' : 'lower'} and re-sweep.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>t = ${cur.t.toFixed(2)}.</b> Loosening the threshold: ${cur.m.tp} positives caught (${prMode ? 'recall' : 'TPR'} ${cur.tpr.toFixed(2)}) at the price of ${cur.m.fp} false alarms (FPR ${cur.fpr.toFixed(2)}). Each new traced point is this exact trade, one notch looser.`;
+  }
+}
+
+// --- controls ---
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  if (sweeping) { sweeping = false; playBtn.textContent = '▶ Sweep'; }
+  else startSweep();
+};
+document.getElementById('stepBtn').onclick = () => {
+  // one manual notch of the sweep
+  sweeping = false; playBtn.textContent = '▶ Sweep';
+  if (threshold <= 0.011) resetSweep();
+  else { threshold = Math.max(0.01, threshold - 0.02); traced.push(curvePoint(threshold)); }
+};
+document.getElementById('dataBtn').onclick = () => { seed = (seed * 1103515245 + 12345) % 2147483647; makeData(); startSweep(); };
+
+const prBtn = document.getElementById('prBtn');
+prBtn.onclick = () => {
+  prMode = !prMode;
+  prBtn.classList.toggle('toggled', prMode);
+  document.getElementById('curveLabel').textContent = prMode ? 'pr curve · precision vs recall' : 'roc curve · tpr vs fpr';
+  document.getElementById('capt').textContent = prMode
+    ? 'every traced point = one threshold’s (recall, precision) — same sweep, axes that feel imbalance'
+    : 'every traced point = one threshold’s (false-positive rate, true-positive rate), computed from 240 real samples';
+  startSweep();   // re-trace in the new coordinates
+};
+
+document.getElementById('sepVal').textContent = parseFloat(sepSlider.value).toFixed(2);
+sepSlider.oninput = () => {
+  document.getElementById('sepVal').textContent = parseFloat(sepSlider.value).toFixed(2);
+  makeData(); startSweep();          // distributions morph → curve re-traces
+};
+imbSlider.oninput = () => {
+  document.getElementById('imbVal').textContent = Math.round(parseFloat(imbSlider.value) * 100) + '%';
+  makeData(); startSweep();
+};
+
+// --- render loop ---
+function frame() {
+  if (sweeping) {
+    threshold = Math.max(0.01, threshold - 0.004);   // the glide
+    traced.push(curvePoint(threshold));
+    if (threshold <= 0.011) { sweeping = false; playBtn.textContent = '▶ Sweep'; }
+  }
+  drawDist();
+  drawCurvePanel();
+  updateReadout();
+  requestAnimationFrame(frame);
+}
+
+makeData();
+resetSweep();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attention — Click a Token, See What It Looks At</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    /* file-specific aliases */
+    --accent: var(--cyan);
+    --accent2: var(--magenta);
+    --warn: var(--amber);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: pointer; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 320px; display: flex; flex-direction: column; gap: 14px; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 90px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); line-height: 1.5; }
+
+  /* head selector buttons with per-head active colors */
+  .heads { display: flex; gap: 8px; margin-bottom: 14px; }
+  .heads button { color: var(--dim); padding: 8px 14px; }
+  .heads button.active { color: #0b0b10; transform: none; }
+  .heads button[data-head="0"].active { background: var(--accent); border-color: var(--accent); box-shadow: 0 4px 16px rgba(76,201,240,0.35); }
+  .heads button[data-head="1"].active { background: var(--accent2); border-color: var(--accent2); box-shadow: 0 4px 16px rgba(247,37,133,0.35); }
+  .heads button[data-head="2"].active { background: var(--warn); border-color: var(--warn); box-shadow: 0 4px 16px rgba(251,191,36,0.35); }
+
+  /* top-5 attention readout table */
+  .readout { font-size: 12.5px; line-height: 1.7; }
+  .readout .tok { color: var(--accent); font-weight: 650; }
+  .readout table { width: 100%; border-collapse: collapse; margin-top: 6px; font-family: var(--mono); font-size: 12px; }
+  .readout td { padding: 4px 4px; border-bottom: 1px solid #1f1f2b; }
+  .readout td.bar-cell { width: 55%; }
+  .readout .bar-track { height: 9px; border-radius: 99px; background: #101018; border: 1px solid #1f1f2b; overflow: hidden; }
+  .readout .bar { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--cyan), var(--blue)); }
+  .formula { font-size: 13px; color: var(--dim); text-align: center; padding: 10px 0 2px; font-style: italic; }
+  .formula b { color: var(--warn); font-style: normal; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 03 neural networks</div>
+<h1>Attention</h1>
+<p class="subtitle">softmax(QKᵀ/√d<sub>k</sub>)·V, one cell at a time. <b>Click any token in the sentence</b> to see where it looks. Line thickness = attention weight. The grid below is the full attention matrix: row = the token doing the looking (query), column = the token being looked at (key). Switch heads — each one has learned to track something different.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <div class="heads">
+      <button data-head="0" class="active">Head 1 · meaning</button>
+      <button data-head="1">Head 2 · previous token</button>
+      <button data-head="2">Head 3 · sentence glue</button>
+    </div>
+    <canvas id="viz" width="620" height="790"></canvas>
+    <div class="formula">attention(i→j) = softmax over j of ( q<sub>i</sub>·k<sub>j</sub> / <b>√d<sub>k</sub></b> ) — try the √d<sub>k</sub> toggle to see why scaling matters</div>
+  </div>
+
+  <div class="side">
+    <div class="card readout" id="readout"></div>
+    <div class="card">
+      <label style="font-size:13px; display:flex; align-items:center; gap:8px; cursor:pointer">
+        <input type="checkbox" id="scaleToggle" checked style="accent-color:var(--accent)">
+        divide scores by √d<sub>k</sub> (uncheck to watch softmax saturate)
+      </label>
+      <div class="hint" style="margin-top:8px">Without the scaling, dot products are large, softmax goes one-hot, and the heatmap collapses to single bright cells — the exact failure the √d<sub>k</sub> prevents.</div>
+    </div>
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// REAL SCALED DOT-PRODUCT ATTENTION over hand-crafted embeddings.
+//
+// Each token gets a small feature vector (d_k = 8) whose dimensions
+// mean something: [is-noun, is-animate, is-verb, is-function-word,
+// refers-back, position/n, is-modifier, is-clause-glue].
+// Each head has its own Q and K projections (diagonal, for clarity):
+// a head "attends to" whatever features its projections amplify.
+// Then the genuine formula runs: softmax(q·k / sqrt(d_k)).
+// Nothing in the heatmap is hardcoded — change an embedding and
+// every weight shifts.
+// ============================================================
+
+const TOKENS = ['The','animal','didn’t','cross','the','street','because','it','was','too','tired'];
+const n = TOKENS.length;
+const dk = 8;
+
+// features: [noun, animate, verb, func, refersBack, pos, modifier, glue]
+const EMB = [
+  [0,0,0,1,0, 0/n, 0,0],   // The
+  [1,1,0,0,0, 1/n, 0,0],   // animal
+  [0,0,1,1,0, 2/n, 0,0],   // didn't
+  [0,0,1,0,0, 3/n, 0,0],   // cross
+  [0,0,0,1,0, 4/n, 0,0],   // the
+  [1,0,0,0,0, 5/n, 0,0],   // street
+  [0,0,0,1,0, 6/n, 0,1],   // because
+  [0.3,0.3,0,1,1, 7/n, 0,0], // it — a pronoun: only weakly nominal itself,
+                             // but its QUERY carries refers-back, hunting
+                             // for whatever it stands in for
+  [0,0,1,1,0, 8/n, 0,0],   // was
+  [0,0,0,0,0, 9/n, 1,0],   // too
+  [0,0,0,0,0,10/n, 1,1],   // tired (predicate ties back through "because")
+];
+
+// Per-head Q/K projections as diagonal feature gains.
+// Head 1 "meaning": queries that refer back seek animate nouns.
+// Head 2 "previous token": position features dominate (implemented below
+//   as a relative-position score added pre-softmax — the standard trick).
+// Head 3 "glue": clause connectives and predicates find each other.
+const HEADS = [
+  // kGain for refers-back is 0: a token can SEEK an antecedent without
+  // ADVERTISING itself as one — Q and K projections being different
+  // matrices is exactly what makes this possible.
+  { qGain: [1,2.5,0.3,0.2,4,0,0.3,0.5], kGain: [2,3,0.3,0.2,0,0,0.3,0.5], rel: 0 },
+  { qGain: [0.2,0.2,0.2,0.2,0,0,0.2,0.2], kGain: [0.2,0.2,0.2,0.2,0,0,0.2,0.2], rel: 6 },
+  { qGain: [0.5,0.2,1.5,0.5,0.5,0,2,3], kGain: [0.5,0.2,1.5,0.5,0.5,0,2,3], rel: 0 },
+];
+
+function softmax(scores) {
+  const m = Math.max(...scores);                  // subtract max: numerical stability
+  const exps = scores.map(s => Math.exp(s - m));
+  const sum = exps.reduce((a, b) => a + b, 0);
+  return exps.map(e => e / sum);
+}
+
+// Build the full n×n attention matrix for one head.
+function attentionMatrix(head, scaled) {
+  const A = [];
+  for (let i = 0; i < n; i++) {
+    const q = EMB[i].map((v, f) => v * head.qGain[f]);   // q_i = W_Q x_i
+    const scores = [];
+    for (let j = 0; j < n; j++) {
+      const k = EMB[j].map((v, f) => v * head.kGain[f]); // k_j = W_K x_j
+      let s = q.reduce((acc, qv, f) => acc + qv * k[f], 0); // q·k
+      // relative-position bias: head 2 scores "the token right before me"
+      if (head.rel > 0) s += head.rel * Math.exp(-Math.pow(i - 1 - j, 2));
+      scores.push(s * 4 / (scaled ? Math.sqrt(dk) : 0.45)); // the √dk in question
+    }
+    A.push(softmax(scores));
+  }
+  return A;
+}
+
+// ---------------- rendering ----------------
+const canvas = document.getElementById('viz');
+const ctx = canvas.getContext('2d');
+(function hidpi() {
+  const r = window.devicePixelRatio || 1;
+  canvas.style.width = canvas.width + 'px'; canvas.style.height = canvas.height + 'px';
+  canvas.width *= r; canvas.height *= r; ctx.scale(r, r);
+})();
+const CW = 620;
+
+const HEAD_COLORS = [[76,201,240],[247,37,133],[251,191,36]];
+let currentHead = 0;
+let selected = 7;        // start on "it" — the money token
+let A = [];
+
+// layout: sentence row at top, arcs above it, heatmap below
+const TOK_Y = 150, GRID_Y = 215, GRID_X = 95, CELL = (CW - GRID_X - 30) / n;
+
+function tokenX(i) { return 60 + i * (CW - 110) / (n - 1); }
+
+function draw() {
+  ctx.clearRect(0, 0, CW, 700);
+  const [cr, cg, cb] = HEAD_COLORS[currentHead];
+
+  // --- attention arcs from the selected token ---
+  for (let j = 0; j < n; j++) {
+    if (j === selected) continue;
+    const w = A[selected][j];
+    if (w < 0.01) continue;
+    const x1 = tokenX(selected), x2 = tokenX(j);
+    const mid = (x1 + x2) / 2, lift = Math.min(Math.abs(x2 - x1) * 0.4, 95);
+    ctx.save();
+    ctx.shadowColor = `rgba(${cr},${cg},${cb},0.55)`;
+    ctx.shadowBlur = 4 + w * 12;
+    ctx.strokeStyle = `rgba(${cr},${cg},${cb},${Math.min(0.15 + w, 1)})`;
+    ctx.lineWidth = 1 + w * 14;          // thickness ∝ attention weight
+    ctx.beginPath();
+    ctx.moveTo(x1, TOK_Y - 18);
+    ctx.quadraticCurveTo(mid, TOK_Y - 18 - lift, x2, TOK_Y - 18);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // --- tokens ---
+  ctx.textAlign = 'center';
+  for (let i = 0; i < n; i++) {
+    const x = tokenX(i);
+    const isSel = i === selected;
+    const wIn = A[selected][i];
+    ctx.font = (isSel ? '700 ' : '500 ') + '14px sans-serif';
+    // tokens the selected one attends to glow in the head color
+    ctx.fillStyle = isSel ? '#ffffff' : `rgba(${cr},${cg},${cb},${0.35 + wIn * 0.65})`;
+    if (!isSel && wIn < 0.03) ctx.fillStyle = '#5a5a68';
+    ctx.fillText(TOKENS[i], x, TOK_Y);
+    if (isSel) {
+      ctx.save();
+      ctx.shadowColor = `rgba(${cr},${cg},${cb},0.7)`; ctx.shadowBlur = 12;
+      ctx.strokeStyle = `rgb(${cr},${cg},${cb})`; ctx.lineWidth = 2;
+      ctx.strokeRect(x - ctx.measureText(TOKENS[i]).width / 2 - 6, TOK_Y - 16, ctx.measureText(TOKENS[i]).width + 12, 22);
+      ctx.restore();
+    }
+  }
+  ctx.fillStyle = '#8a8a99'; ctx.font = '11px sans-serif';
+  ctx.fillText('click a token ↑   ·   arcs show where it sends its attention', CW / 2, TOK_Y + 28);
+
+  // --- heatmap ---
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const w = A[i][j];
+      const x = GRID_X + j * CELL, y = GRID_Y + i * CELL;
+      ctx.fillStyle = `rgba(${cr},${cg},${cb},${Math.pow(w, 0.7)})`;
+      ctx.fillRect(x, y, CELL - 2, CELL - 2);
+      if (i === selected) {            // highlight the selected row
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+        ctx.strokeRect(x, y, CELL - 2, CELL - 2);
+      }
+    }
+    // row & column labels
+    ctx.fillStyle = i === selected ? '#fff' : '#8a8a99';
+    ctx.font = (i === selected ? '700 ' : '400 ') + '10.5px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(TOKENS[i], GRID_X - 8, GRID_Y + i * CELL + CELL / 2 + 3);
+    ctx.save();
+    ctx.translate(GRID_X + i * CELL + CELL / 2 + 3, GRID_Y + n * CELL + 8);
+    ctx.rotate(Math.PI / 4);
+    ctx.textAlign = 'left';
+    ctx.fillText(TOKENS[i], 0, 0);
+    ctx.restore();
+  }
+  ctx.fillStyle = '#8a8a99'; ctx.font = '10.5px sans-serif'; ctx.textAlign = 'center';
+  ctx.save();
+  ctx.translate(GRID_X - 62, GRID_Y + n * CELL / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('query (token doing the looking)', 0, 0);
+  ctx.restore();
+  ctx.fillText('key (token being looked at)', GRID_X + n * CELL / 2, GRID_Y + n * CELL + 52);
+
+  updatePanels();
+}
+
+const HEAD_NOTES = [
+  '<b>Head 1 — meaning.</b> Watch <b>"it"</b>: its query carries a refers-back feature that matches the keys of animate nouns, so almost all of its attention lands on <b>"animal"</b>, not "street". This is coreference resolution emerging from dot products — the famous example from the original transformer paper.',
+  '<b>Head 2 — previous token.</b> Every query scores highest on the key one position back, so the heatmap lights up just below the diagonal. Real transformers reliably learn heads like this; they let the model build local phrases before longer-range heads take over.',
+  '<b>Head 3 — sentence glue.</b> Connectives and predicates find each other: <b>"because"</b>, <b>"tired"</b> and the verbs trade attention, wiring the causal clause to what it explains. Different head, same math — only the learned projections differ.',
+];
+
+function updatePanels() {
+  const weights = A[selected].map((w, j) => ({ j, w })).sort((a, b) => b.w - a.w).slice(0, 5);
+  const [hr, hg, hb] = HEAD_COLORS[currentHead];
+  document.getElementById('readout').innerHTML =
+    `where <span class="tok" style="color:rgb(${hr},${hg},${hb})">“${TOKENS[selected]}”</span> sends its attention (top 5):` +
+    '<table>' + weights.map(({ j, w }) =>
+      `<tr><td>${TOKENS[j]}</td><td class="bar-cell"><div class="bar-track"><div class="bar" style="width:${(w * 100).toFixed(1)}%; background:linear-gradient(90deg, rgba(${hr},${hg},${hb},0.55), rgb(${hr},${hg},${hb}))"></div></div></td><td>${(w * 100).toFixed(1)}%</td></tr>`
+    ).join('') + '</table>' +
+    `<div class="hint" style="margin-top:6px">These weights sum to 100% — softmax gives each token a fixed attention budget to spend.</div>`;
+
+  const ann = document.getElementById('annotation');
+  ann.style.borderLeftColor = `rgb(${HEAD_COLORS[currentHead].join(',')})`;
+  ann.innerHTML = HEAD_NOTES[currentHead] +
+    (!document.getElementById('scaleToggle').checked
+      ? '<br><br><b style="color:#f87171">√d<sub>k</sub> scaling OFF:</b> scores are inflated, softmax saturates toward one-hot rows. In training this kills the gradient — softmax\'s derivative is ~0 when one weight is ~1.'
+      : '');
+}
+
+function recompute() {
+  A = attentionMatrix(HEADS[currentHead], document.getElementById('scaleToggle').checked);
+  draw();
+}
+
+// ---------------- interaction ----------------
+canvas.addEventListener('click', e => {
+  const r = canvas.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  if (y < TOK_Y + 14) {                               // clicked the sentence
+    let best = 0, bd = 1e9;
+    for (let i = 0; i < n; i++) { const d = Math.abs(x - tokenX(i)); if (d < bd) { bd = d; best = i; } }
+    selected = best; draw();
+  } else if (y >= GRID_Y && y <= GRID_Y + n * CELL && x >= GRID_X) {  // clicked the grid
+    const i = Math.floor((y - GRID_Y) / CELL);
+    if (i >= 0 && i < n) { selected = i; draw(); }
+  }
+});
+
+document.querySelectorAll('.heads button').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.heads button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentHead = +btn.dataset.head;
+    recompute();
+  };
+});
+document.getElementById('scaleToggle').onchange = recompute;
+
+recompute();
+</script>
+</body>
+</html>

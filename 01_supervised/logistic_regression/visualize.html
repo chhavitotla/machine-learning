@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logistic Regression — Watch a Probability Field Learn</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button.toggled {
+    background: linear-gradient(135deg, var(--magenta), #b5179e);
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(247,37,133,0.28);
+  }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  .confusion { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+  .cf { border-radius: 9px; padding: 8px 10px; font-family: var(--mono); font-size: 14px; font-weight: 650; }
+  .cf .lbl { font-size: 9.5px; font-family: inherit; letter-spacing: 0.1em; opacity: 0.75; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 01 supervised learning</div>
+<h1>Logistic Regression</h1>
+<p class="subtitle">The background is the model's belief: <b style="color:var(--cyan)">cyan</b> means "probably class 0", <b style="color:var(--magenta)">magenta</b> means "probably class 1", and the glowing white line is the 50/50 frontier. Watch gradient descent rotate and sharpen the field. <b>Click to add points</b> — toggle which class you're dropping — and slide the threshold to trade false alarms for misses.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="460"></canvas>
+    <div class="caption">probability field p = σ(w·x + b) · white line = decision boundary at the current threshold</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="stepBtn">Step</button>
+      <button id="resetBtn">↺ Reset fit</button>
+      <button id="dataBtn">🎲 New data</button>
+      <button id="classBtn" style="width:100%">click adds: ● class 0 (cyan)</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Learning rate α <span class="val" id="lrVal">1.0</span></label>
+        <input type="range" id="lr" min="-2" max="1.3" step="0.01" value="0">
+      </div>
+      <div class="slider-row">
+        <label>Decision threshold <span class="val" id="thVal">0.50</span></label>
+        <input type="range" id="th" min="0.02" max="0.98" step="0.01" value="0.5">
+      </div>
+      <div class="hint">The threshold doesn't retrain anything — it slides the boundary along the probability field. Lower it to catch more of class 1 at the price of false alarms.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">cross-entropy</div><div class="v" style="color:var(--amber)" id="lossVal">—</div></div>
+        <div class="stat"><div class="k">accuracy @ t</div><div class="v" style="color:var(--green)" id="accVal">—</div></div>
+        <div class="stat"><div class="k">epoch</div><div class="v" id="iterVal">0</div></div>
+        <div class="stat"><div class="k">‖gradient‖</div><div class="v" style="color:var(--cyan)" id="gradVal">—</div></div>
+      </div>
+      <div class="confusion">
+        <div class="cf" style="background:rgba(74,222,128,0.10);color:var(--green)"><div class="lbl">TP · caught 1s</div><span id="tpVal">0</span></div>
+        <div class="cf" style="background:rgba(248,113,113,0.10);color:var(--red)"><div class="lbl">FP · false alarms</div><span id="fpVal">0</span></div>
+        <div class="cf" style="background:rgba(248,113,113,0.10);color:var(--red)"><div class="lbl">FN · missed 1s</div><span id="fnVal">0</span></div>
+        <div class="cf" style="background:rgba(74,222,128,0.10);color:var(--green)"><div class="lbl">TN · correct 0s</div><span id="tnVal">0</span></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">Cross-entropy over epochs</div>
+      <canvas id="losschart" width="276" height="96"></canvas>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// LOGISTIC REGRESSION VIA GRADIENT DESCENT
+// Model:  p = σ(w1·x1 + w2·x2 + b),  σ(z) = 1/(1+e^-z)
+// Loss:   cross-entropy = -(1/n) Σ [y·log p + (1-y)·log(1-p)]
+// Grad:   ∂L/∂w = (1/n) Σ (p - y)·x   — the log's 1/p and the
+//         sigmoid's p(1-p) cancel, leaving (prediction - truth)·input
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+const lossCanvas = document.getElementById('losschart');
+const lctx = lossCanvas.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+const LC = hidpi(lossCanvas);
+const PAD = 42;
+
+// offscreen low-res buffer for the probability heatmap; scaled up smoothly
+const HM = 72;
+const heat = document.createElement('canvas');
+heat.width = HM; heat.height = HM;
+const hctx = heat.getContext('2d');
+const heatImg = hctx.createImageData(HM, HM);
+
+// --- state --- (data lives in [0,1]², features used as-is)
+let points = [];
+let w1 = 0, w2 = 0, b = 0;
+let epoch = 0;
+let lossHistory = [];
+let playing = false;
+let lastStep = 0;
+let converged = false;
+let lastGrad = null;
+let addClass = 0;   // which class a click drops
+
+// --- data: two gaussian blobs, overlapping enough to make mistakes possible ---
+function gauss() {
+  const u1 = Math.random(), u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+function makeData() {
+  points = [];
+  // random blob centers on opposite sides, random spread
+  const ang = Math.random() * Math.PI * 2;
+  const cx = 0.5 + Math.cos(ang) * 0.22, cy = 0.5 + Math.sin(ang) * 0.22;
+  const dx = 0.5 - Math.cos(ang) * 0.22, dy = 0.5 - Math.sin(ang) * 0.22;
+  for (let i = 0; i < 30; i++) {
+    points.push({ x: clamp01(cx + gauss() * 0.10), y: clamp01(cy + gauss() * 0.10), c: 0, born: performance.now() });
+    points.push({ x: clamp01(dx + gauss() * 0.10), y: clamp01(dy + gauss() * 0.10), c: 1, born: performance.now() });
+  }
+}
+const clamp01 = v => Math.min(0.97, Math.max(0.03, v));
+
+function resetFit() {
+  w1 = 0; w2 = 0; b = 0;          // start at total ignorance: p = 0.5 everywhere
+  epoch = 0; lossHistory = []; converged = false; lastGrad = null;
+}
+
+// --- the algorithm ---
+function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+function proba(p) { return sigmoid(w1 * p.x + w2 * p.y + b); }
+
+function crossEntropy() {
+  // -(1/n) Σ [y·log p + (1-y)·log(1-p)] — confident wrong answers cost dearly
+  let s = 0;
+  for (const p of points) {
+    const pr = Math.min(1 - 1e-9, Math.max(1e-9, proba(p)));
+    s += -(p.c * Math.log(pr) + (1 - p.c) * Math.log(1 - pr));
+  }
+  return s / points.length;
+}
+
+function gradStep(alpha) {
+  // The whole gradient is (p - y)·x averaged over the data.
+  // Each misclassified point pushes the boundary toward itself;
+  // well-classified points barely whisper (p - y ≈ 0).
+  let g1 = 0, g2 = 0, gb = 0;
+  const n = points.length;
+  for (const p of points) {
+    const err = proba(p) - p.c;     // prediction minus truth
+    g1 += err * p.x / n;
+    g2 += err * p.y / n;
+    gb += err / n;
+  }
+  w1 -= alpha * g1;
+  w2 -= alpha * g2;
+  b -= alpha * gb;
+  epoch++;
+  lossHistory.push(crossEntropy());
+  const gmag = Math.hypot(g1, g2, gb);
+  converged = gmag < 2e-4;
+  lastGrad = { g1, g2, gb, gmag };
+}
+
+function confusion(t) {
+  // threshold the probability field at t and tally the four outcomes
+  let tp = 0, fp = 0, tn = 0, fn = 0;
+  for (const p of points) {
+    const pred = proba(p) >= t ? 1 : 0;
+    if (pred === 1 && p.c === 1) tp++;
+    else if (pred === 1 && p.c === 0) fp++;
+    else if (pred === 0 && p.c === 0) tn++;
+    else fn++;
+  }
+  return { tp, fp, tn, fn };
+}
+
+// --- mapping ---
+const X = x => PAD + x * (P.w - 2 * PAD);
+const Y = y => P.h - PAD - y * (P.h - 2 * PAD);
+
+// --- heatmap: paint σ(w·x+b) over the whole plane, cyan→magenta ---
+function drawHeatmap() {
+  const d = heatImg.data;
+  for (let j = 0; j < HM; j++) {
+    const y = 1 - j / (HM - 1);
+    for (let i = 0; i < HM; i++) {
+      const x = i / (HM - 1);
+      const pr = sigmoid(w1 * x + w2 * y + b);   // the model's belief here
+      // lerp cyan (76,201,240) → magenta (247,37,133), dimmed for the dark bg
+      const k = (j * HM + i) * 4;
+      d[k]     = 76 + (247 - 76) * pr;
+      d[k + 1] = 201 + (37 - 201) * pr;
+      d[k + 2] = 240 + (133 - 240) * pr;
+      // strongest tint where the model is confident, fading near p = 0.5
+      d[k + 3] = 28 + 60 * Math.abs(pr - 0.5) * 2;
+    }
+  }
+  hctx.putImageData(heatImg, 0, 0);
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(heat, X(0), Y(1), X(1) - X(0), Y(0) - Y(1));
+  ctx.restore();
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (P.w - 2 * PAD) / 10;
+    const gy = PAD + i * (P.h - 2 * PAD) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, P.h - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(P.w - PAD, gy); ctx.stroke();
+  }
+  ctx.strokeStyle = '#2a2a38'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(PAD, PAD - 12); ctx.lineTo(PAD, P.h - PAD); ctx.lineTo(P.w - PAD + 12, P.h - PAD);
+  ctx.stroke();
+  ctx.fillStyle = '#5d5d72'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('x₁', P.w - PAD + 14, P.h - PAD + 4);
+  ctx.fillText('x₂', PAD - 10, PAD - 18);
+}
+
+// --- boundary: the line where σ(w·x+b) = t, i.e. w·x+b = logit(t) ---
+function drawBoundary(t, color, width, glow) {
+  const z = Math.log(t / (1 - t));     // logit: invert the sigmoid
+  // intersect w1·x + w2·y + b = z with the [0,1]² box
+  const pts = [];
+  const eps = 1e-9;
+  if (Math.abs(w2) > eps) {
+    for (const x of [0, 1]) {
+      const y = (z - b - w1 * x) / w2;
+      if (y >= 0 && y <= 1) pts.push([x, y]);
+    }
+  }
+  if (Math.abs(w1) > eps) {
+    for (const y of [0, 1]) {
+      const x = (z - b - w2 * y) / w1;
+      if (x > 0 && x < 1) pts.push([x, y]);
+    }
+  }
+  if (pts.length < 2) return;
+  ctx.save();
+  if (glow) { ctx.shadowColor = glow; ctx.shadowBlur = 14; }
+  ctx.strokeStyle = color; ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(X(pts[0][0]), Y(pts[0][1]));
+  ctx.lineTo(X(pts[1][0]), Y(pts[1][1]));
+  ctx.stroke();
+  ctx.restore();
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, P.w, P.h);
+  drawHeatmap();
+  drawGrid();
+
+  const t = parseFloat(thSlider.value);
+  // faint reference line at p = 0.5, bold glowing line at the chosen threshold
+  if (Math.abs(t - 0.5) > 0.015) drawBoundary(0.5, 'rgba(255,255,255,0.25)', 1.2, null);
+  drawBoundary(t, '#ffffff', 2.5, 'rgba(255,255,255,0.7)');
+
+  // data points: cyan = class 0, magenta = class 1; ring marks current misses
+  for (const p of points) {
+    const age = Math.min((now - (p.born || 0)) / 300, 1);
+    const rad = 4.5 * (0.4 + 0.6 * age);
+    const col = p.c === 1 ? '#f72585' : '#4cc9f0';
+    const wrong = (proba(p) >= t ? 1 : 0) !== p.c;
+    ctx.save();
+    ctx.shadowColor = col; ctx.shadowBlur = 8;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rad, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    if (wrong) {
+      ctx.strokeStyle = 'rgba(251,191,36,0.85)'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rad + 3, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath(); ctx.arc(X(p.x) - 1, Y(p.y) - 1, 1.1, 0, Math.PI * 2); ctx.fill();
+  }
+
+  drawLossChart();
+  updateReadout(t);
+}
+
+function drawLossChart() {
+  lctx.clearRect(0, 0, LC.w, LC.h);
+  lctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 1; i < 4; i++) {
+    lctx.beginPath(); lctx.moveTo(0, LC.h * i / 4); lctx.lineTo(LC.w, LC.h * i / 4); lctx.stroke();
+  }
+  if (lossHistory.length < 2) return;
+  const maxL = Math.max(...lossHistory.slice(0, 60), 0.05);
+  const n = lossHistory.length;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const x = (i / Math.max(n - 1, 1)) * (LC.w - 6) + 3;
+    const y = LC.h - 5 - Math.min(lossHistory[i] / maxL, 1) * (LC.h - 10);
+    pts.push([x, y]);
+  }
+  lctx.beginPath();
+  lctx.moveTo(pts[0][0], LC.h); pts.forEach(([x, y]) => lctx.lineTo(x, y)); lctx.lineTo(pts[n - 1][0], LC.h);
+  lctx.closePath();
+  const grad = lctx.createLinearGradient(0, 0, 0, LC.h);
+  grad.addColorStop(0, 'rgba(251,191,36,0.25)'); grad.addColorStop(1, 'rgba(251,191,36,0)');
+  lctx.fillStyle = grad; lctx.fill();
+  lctx.strokeStyle = '#fbbf24'; lctx.lineWidth = 2;
+  lctx.beginPath(); pts.forEach(([x, y], i) => i === 0 ? lctx.moveTo(x, y) : lctx.lineTo(x, y)); lctx.stroke();
+}
+
+function updateReadout(t) {
+  const L = crossEntropy();
+  const { tp, fp, tn, fn } = confusion(t);
+  const acc = (tp + tn) / points.length;
+  document.getElementById('lossVal').textContent = L.toFixed(4);
+  document.getElementById('accVal').textContent = (acc * 100).toFixed(1) + '%';
+  document.getElementById('iterVal').textContent = epoch;
+  document.getElementById('gradVal').textContent = lastGrad ? lastGrad.gmag.toFixed(4) : '—';
+  document.getElementById('tpVal').textContent = tp;
+  document.getElementById('fpVal').textContent = fp;
+  document.getElementById('tnVal').textContent = tn;
+  document.getElementById('fnVal').textContent = fn;
+
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = converged
+    ? '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ converged — gradient ≈ 0</span>'
+    : '';
+
+  const ann = document.getElementById('annotation');
+  if (epoch === 0) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = '<b>Ready.</b> Weights start at zero, so the model believes p = 0.5 <i>everywhere</i> — a uniform fog. Cross-entropy sits at ln 2 ≈ 0.693, the cost of pure coin-flipping. Hit <b>Step</b> to watch the first gradient update.';
+  } else if (converged) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Converged.</b> Cross-entropy <b>${L.toFixed(4)}</b>. Every point's pull (p − y)·x is balanced — misclassified points still push, but correctly-classified ones now push back just as hard. Now slide the <b>threshold</b>: lowering it converts FN (missed 1s) into FP (false alarms) one for one along the field.`;
+  } else if (lastGrad) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    const dom = Math.abs(lastGrad.g1) > Math.abs(lastGrad.g2) ? 'x₁' : 'x₂';
+    ann.innerHTML = `<b>Epoch ${epoch}.</b> Cross-entropy <b>${L.toFixed(4)}</b> (coin-flip = 0.693). The gradient (p − y)·x is rotating the boundary mostly along <b>${dom}</b> — misclassified points pull it toward themselves, confident-correct points barely whisper. ‖grad‖ = ${lastGrad.gmag.toFixed(4)}, shrinking as beliefs sharpen. Threshold t = ${t.toFixed(2)}: ${fn} missed 1s vs ${fp} false alarms — lower t trades the former for the latter.`;
+  }
+}
+
+// --- controls ---
+const lrSlider = document.getElementById('lr');
+const thSlider = document.getElementById('th');
+const alpha = () => Math.pow(10, parseFloat(lrSlider.value));
+lrSlider.oninput = () => document.getElementById('lrVal').textContent = alpha() < 0.1 ? alpha().toFixed(3) : alpha().toFixed(1);
+thSlider.oninput = () => document.getElementById('thVal').textContent = parseFloat(thSlider.value).toFixed(2);
+lrSlider.oninput(); thSlider.oninput();
+
+document.getElementById('stepBtn').onclick = () => gradStep(alpha());
+document.getElementById('resetBtn').onclick = () => resetFit();
+document.getElementById('dataBtn').onclick = () => { makeData(); resetFit(); };
+
+const classBtn = document.getElementById('classBtn');
+classBtn.onclick = () => {
+  addClass = 1 - addClass;
+  classBtn.classList.toggle('toggled', addClass === 1);
+  classBtn.textContent = addClass === 1 ? 'click adds: ● class 1 (magenta)' : 'click adds: ● class 0 (cyan)';
+};
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+};
+
+plot.addEventListener('click', e => {
+  const r = plot.getBoundingClientRect();
+  const ux = Math.min(1, Math.max(0, (e.clientX - r.left - PAD) / (P.w - 2 * PAD)));
+  const uy = Math.min(1, Math.max(0, 1 - (e.clientY - r.top - PAD) / (P.h - 2 * PAD)));
+  points.push({ x: ux, y: uy, c: addClass, born: performance.now() });
+  converged = false;
+});
+
+// --- render loop ---
+function frame(t) {
+  if (playing && t - lastStep > 1000 / 30) {     // 30 gradient steps per second
+    lastStep = t;
+    if (!converged) gradStep(alpha());
+    else { playing = false; playBtn.textContent = '▶ Play'; }
+  }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+makeData(); resetFit();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

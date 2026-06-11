@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Perceptron — The 1958 Learning Rule, Animated</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button.toggled {
+    background: linear-gradient(135deg, var(--magenta), #b5179e);
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(247,37,133,0.28);
+  }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 03 neural networks</div>
+<h1>The Perceptron</h1>
+<p class="subtitle">The 1958 rule that started it all: visit points one at a time; <b>if a point is misclassified, add α·y·x to the weights</b> and the boundary visibly rotates toward it. On separable data this provably converges. Hit <b>make non-separable</b> and watch it oscillate forever — the exact failure that demanded loss functions and hidden layers.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="500"></canvas>
+    <div class="caption">white arrow: w · amber arrow: the update α·y·x being added · pulsing ring: current point</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="stepBtn">Step</button>
+      <button id="classBtn">✚ adding: cyan</button>
+      <button id="xorBtn">⚡ make non-separable</button>
+      <button id="resetBtn">↺ Reset</button>
+      <button id="dataBtn">🎲 New data</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Learning rate α <span class="val" id="lrVal">0.50</span></label>
+        <input type="range" id="lr" min="0.05" max="2" step="0.05" value="0.5">
+      </div>
+      <div class="slider-row">
+        <label>Speed <span class="val" id="speedVal">8 points/s</span></label>
+        <input type="range" id="speed" min="1" max="30" step="1" value="8">
+      </div>
+      <div class="hint">α only scales the step here — unlike gradient descent, the perceptron converges for <i>any</i> α on separable data, because each update is the same fixed correction, just resized.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">epoch</div><div class="v" id="epochVal">0</div></div>
+        <div class="stat"><div class="k">mistakes this epoch</div><div class="v" style="color:var(--red)" id="mistVal">—</div></div>
+        <div class="stat"><div class="k">w₁</div><div class="v" style="color:var(--cyan)" id="w1Val">0.00</div></div>
+        <div class="stat"><div class="k">w₂</div><div class="v" style="color:var(--cyan)" id="w2Val">0.00</div></div>
+        <div class="stat wide"><div class="k">bias b</div><div class="v" style="color:var(--magenta)" id="bVal">0.00</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">mistakes per epoch</div>
+      <canvas id="mistChart" width="276" height="96"></canvas>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// THE PERCEPTRON LEARNING RULE (Rosenblatt 1958)
+// Model:   ŷ = sign(w·x + b)
+// Rule:    visit points one by one; if ŷ ≠ y (misclassified):
+//              w += α·y·x      b += α·y
+//          correct points change NOTHING — no loss, no gradient,
+//          just "rotate the line toward the point you got wrong".
+// Novikoff (1962): separable data ⇒ finitely many mistakes, ever.
+// Non-separable data ⇒ every fix breaks something ⇒ eternal cycle.
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+const mistC = document.getElementById('mistChart');
+const mctx = mistC.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+const MC = hidpi(mistC);
+const PAD = 30;
+
+// --- state: data in [0,1]², coordinates centered at 0.5 for the math ---
+// (centering means b stays small and the w-arrow drawn from the canvas
+//  center honestly represents the boundary's normal)
+let points = [];                   // {x, y, label, born}
+let w = [0, 0], b = 0;
+let wD = [0, 0], bD = 0;           // eased display copies — pure theater
+let cursor = 0;                    // which point we're visiting
+let epoch = 0, mistakesThisEpoch = 0;
+let mistHistory = [];
+let converged = false;
+let lastUpdate = null;             // {x, y, label, glowUntil} — for the arrow + flash
+let playing = false, lastTick = 0;
+let addClass = +1;
+let rngState = 7331;
+
+function rnd() { rngState = (rngState * 1103515245 + 12345) & 0x7fffffff; return rngState / 0x7fffffff; }
+function gauss(mu, sd) {
+  const u1 = Math.max(rnd(), 1e-9), u2 = rnd();
+  return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+const clamp01 = v => Math.min(0.97, Math.max(0.03, v));
+
+function makeData() {
+  points = [];
+  for (let i = 0; i < 16; i++) {
+    points.push({ x: clamp01(gauss(0.32, 0.09)), y: clamp01(gauss(0.68, 0.09)), label: +1, born: performance.now() });
+    points.push({ x: clamp01(gauss(0.68, 0.09)), y: clamp01(gauss(0.32, 0.09)), label: -1, born: performance.now() });
+  }
+}
+
+// inject overlapping points so NO line can be clean — the XOR-style failure
+function makeNonSeparable() {
+  for (let i = 0; i < 5; i++) {
+    points.push({ x: clamp01(gauss(0.68, 0.06)), y: clamp01(gauss(0.32, 0.06)), label: +1, born: performance.now() });
+    points.push({ x: clamp01(gauss(0.32, 0.06)), y: clamp01(gauss(0.68, 0.06)), label: -1, born: performance.now() });
+  }
+  converged = false;
+}
+
+function resetLearner() {
+  w = [0, 0]; b = 0; wD = [0, 0]; bD = 0;
+  cursor = 0; epoch = 0; mistakesThisEpoch = 0;
+  mistHistory = []; converged = false; lastUpdate = null;
+}
+
+// --- the algorithm: visit ONE point ---
+const alpha = () => parseFloat(document.getElementById('lr').value);
+const f = p => w[0] * (p.x - 0.5) + w[1] * (p.y - 0.5) + b;   // centered coords
+
+function visitNext() {
+  if (converged || points.length === 0) return;
+  const p = points[cursor];
+  const yhat = f(p) >= 0 ? 1 : -1;
+  if (yhat !== p.label) {
+    // THE rule: w += α·y·x, b += α·y — rotate the boundary toward p
+    const a = alpha();
+    w[0] += a * p.label * (p.x - 0.5);
+    w[1] += a * p.label * (p.y - 0.5);
+    b += a * p.label;
+    mistakesThisEpoch++;
+    lastUpdate = { px: p.x, py: p.y, label: p.label, a, glowUntil: performance.now() + 700 };
+  } else {
+    lastUpdate = null;
+  }
+  cursor++;
+  if (cursor >= points.length) {
+    // full epoch done — zero mistakes means PROVABLY finished
+    mistHistory.push(mistakesThisEpoch);
+    if (mistakesThisEpoch === 0) { converged = true; playing = false; playBtn.textContent = '▶ Play'; }
+    epoch++; cursor = 0; mistakesThisEpoch = 0;
+  }
+}
+
+// --- mapping ---
+const X = x => PAD + x * (P.w - 2 * PAD);
+const Y = y => P.h - PAD - y * (P.h - 2 * PAD);
+
+// boundary w·(x−c) + b = 0 clipped to the unit square
+function boundarySegment(wv, bv) {
+  const pts = [];
+  const [a, d] = wv;
+  if (Math.abs(d) > 1e-12) {
+    for (const x of [0, 1]) { const y = 0.5 + (-bv - a * (x - 0.5)) / d; if (y >= -0.001 && y <= 1.001) pts.push([x, y]); }
+  }
+  if (Math.abs(a) > 1e-12) {
+    for (const y of [0, 1]) { const x = 0.5 + (-bv - d * (y - 0.5)) / a; if (x > 0.001 && x < 0.999) pts.push([x, y]); }
+  }
+  return pts.length >= 2 ? [pts[0], pts[1]] : null;
+}
+
+function arrow(x1, y1, x2, y2, color, lw) {
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 9 * Math.cos(ang - 0.4), y2 - 9 * Math.sin(ang - 0.4));
+  ctx.lineTo(x2 - 9 * Math.cos(ang + 0.4), y2 - 9 * Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+}
+
+function draw(now) {
+  // ease the displayed boundary toward the true one — so updates feel like rotation
+  wD[0] += (w[0] - wD[0]) * 0.22; wD[1] += (w[1] - wD[1]) * 0.22; bD += (b - bD) * 0.22;
+
+  ctx.clearRect(0, 0, P.w, P.h);
+  // faint grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (P.w - 2 * PAD) / 10, gy = PAD + i * (P.h - 2 * PAD) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, P.h - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(P.w - PAD, gy); ctx.stroke();
+  }
+
+  const glow = lastUpdate && now < lastUpdate.glowUntil;
+
+  // the boundary, glowing brighter right after an update
+  const seg = boundarySegment(wD, bD);
+  if (seg) {
+    ctx.save();
+    ctx.shadowColor = glow ? 'rgba(251,191,36,0.8)' : 'rgba(236,237,242,0.45)';
+    ctx.shadowBlur = glow ? 18 : 10;
+    ctx.strokeStyle = glow ? '#fde68a' : '#ecedf2'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(X(seg[0][0]), Y(seg[0][1])); ctx.lineTo(X(seg[1][0]), Y(seg[1][1])); ctx.stroke();
+    ctx.restore();
+  }
+
+  // points, colored by class; misclassified ones get a red ring
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    const wrong = (f(p) >= 0 ? 1 : -1) !== p.label;
+    const age = Math.min((now - (p.born || 0)) / 300, 1);
+    const rad = 5 * (0.4 + 0.6 * age);
+    const col = p.label > 0 ? '76,201,240' : '247,37,133';
+    ctx.save();
+    ctx.shadowColor = `rgba(${col},0.8)`; ctx.shadowBlur = 7;
+    ctx.fillStyle = `rgba(${col},0.95)`;
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rad, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    if (wrong && (epoch > 0 || cursor > 0)) {
+      ctx.strokeStyle = 'rgba(248,113,113,0.85)'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rad + 3, 0, Math.PI * 2); ctx.stroke();
+    }
+    // pulsing ring on the point about to be visited
+    if (i === cursor && !converged) {
+      const pulse = 4 + 2.5 * Math.sin(now / 150);
+      ctx.strokeStyle = 'rgba(251,191,36,0.9)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rad + 4 + pulse, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  // the weight vector w drawn from the canvas center — it is the boundary's normal
+  const cx = X(0.5), cy = Y(0.5);
+  const wn = Math.hypot(wD[0], wD[1]);
+  if (wn > 1e-6) {
+    const s = 90 / Math.max(wn, 1);     // display scale, capped
+    ctx.save(); ctx.shadowColor = 'rgba(236,237,242,0.5)'; ctx.shadowBlur = 8;
+    arrow(cx, cy, cx + wD[0] * s, cy - wD[1] * s, '#ecedf2', 2.2);
+    ctx.restore();
+    ctx.fillStyle = '#9a9ab0'; ctx.font = '600 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('w', cx + wD[0] * s + 8, cy - wD[1] * s);
+
+    // the update vector α·y·x shown being ADDED onto the tip of w
+    if (glow) {
+      const u = lastUpdate;
+      const ux = u.a * u.label * (u.px - 0.5), uy = u.a * u.label * (u.py - 0.5);
+      ctx.save(); ctx.shadowColor = 'rgba(251,191,36,0.8)'; ctx.shadowBlur = 10;
+      arrow(cx + wD[0] * s, cy - wD[1] * s,
+            cx + (wD[0] + ux) * s, cy - (wD[1] + uy) * s, '#fbbf24', 2.2);
+      ctx.restore();
+      ctx.fillStyle = '#fbbf24'; ctx.font = '600 11px sans-serif';
+      ctx.fillText('+ α·y·x', cx + (wD[0] + ux) * s + 8, cy - (wD[1] + uy) * s);
+    }
+  }
+
+  drawMistChart();
+  updateReadout();
+}
+
+function drawMistChart() {
+  mctx.clearRect(0, 0, MC.w, MC.h);
+  mctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 1; i < 4; i++) { mctx.beginPath(); mctx.moveTo(0, MC.h * i / 4); mctx.lineTo(MC.w, MC.h * i / 4); mctx.stroke(); }
+  if (mistHistory.length === 0) return;
+  const maxM = Math.max(...mistHistory, 1);
+  const n = mistHistory.length;
+  const bw = Math.min(14, (MC.w - 8) / n);
+  for (let i = 0; i < n; i++) {
+    const h = (mistHistory[i] / maxM) * (MC.h - 12);
+    const x = 4 + i * bw;
+    mctx.fillStyle = mistHistory[i] === 0 ? 'rgba(74,222,128,0.85)' : 'rgba(248,113,113,0.7)';
+    mctx.fillRect(x, MC.h - 4 - Math.max(h, 2), bw - 2, Math.max(h, 2));
+  }
+}
+
+function updateReadout() {
+  document.getElementById('epochVal').textContent = epoch;
+  document.getElementById('mistVal').textContent =
+    (epoch === 0 && cursor === 0) ? '—' : `${mistakesThisEpoch} (${cursor}/${points.length})`;
+  document.getElementById('w1Val').textContent = w[0].toFixed(2);
+  document.getElementById('w2Val').textContent = w[1].toFixed(2);
+  document.getElementById('bVal').textContent = b.toFixed(2);
+
+  // oscillation check: several recent epochs, none clean
+  const recent = mistHistory.slice(-6);
+  const oscillating = recent.length >= 6 && recent.every(m => m > 0) && epoch >= 10;
+
+  const badge = document.getElementById('statusBadge');
+  if (converged) badge.innerHTML = '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ converged — a full epoch with zero mistakes</span>';
+  else if (oscillating) badge.innerHTML = '<span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red)">✗ oscillating — data is not linearly separable</span>';
+  else badge.innerHTML = '';
+
+  const ann = document.getElementById('annotation');
+  if (converged) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Converged.</b> Epoch ${epoch} had zero mistakes, so every future epoch will too — the rule only updates on errors. Novikoff's theorem guaranteed this would happen, in at most (R/γ)² mistakes, because the data is separable. Note: it stopped at the <i>first</i> line that works, not the best one — that's what SVMs fix.`;
+  } else if (oscillating) {
+    ann.style.borderLeftColor = 'var(--red)';
+    ann.innerHTML = `<b>Stuck forever.</b> ${recent[recent.length - 1]} mistakes again this epoch — every update that fixes one point breaks another, so w cycles endlessly and never settles. The perceptron has no loss to minimize, no notion of "good enough", only right/wrong. <b>This is exactly why we need loss-based methods</b>: logistic regression or an SVM would converge here to the best achievable line; a hidden layer could even separate it perfectly.`;
+  } else if (epoch === 0 && cursor === 0) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = '<b>Ready.</b> w = 0, so there is no boundary yet. Hit <b>Step</b> to visit the first point — the very first mistake will <i>create</i> the line, since w becomes α·y·x.';
+  } else if (lastUpdate) {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>Epoch ${epoch}, point ${cursor}/${points.length}.</b> That point was misclassified, so the rule fired: w += α·y·x added the amber arrow to w, rotating the boundary toward the ${lastUpdate.label > 0 ? 'cyan' : 'magenta'} side. ${mistakesThisEpoch} mistake${mistakesThisEpoch === 1 ? '' : 's'} so far this epoch.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Epoch ${epoch}, point ${cursor}/${points.length}.</b> Last point was already correct — the perceptron does <i>nothing</i> on correct points, which is why it stops at the first separating line it finds rather than the widest one.`;
+  }
+}
+
+// --- controls ---
+const lrSlider = document.getElementById('lr');
+const speedSlider = document.getElementById('speed');
+lrSlider.oninput = () => document.getElementById('lrVal').textContent = parseFloat(lrSlider.value).toFixed(2);
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = speedSlider.value + ' points/s';
+lrSlider.oninput(); speedSlider.oninput();
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ Pause' : '▶ Play'; };
+document.getElementById('stepBtn').onclick = () => visitNext();
+document.getElementById('resetBtn').onclick = () => resetLearner();
+document.getElementById('dataBtn').onclick = () => { rngState = (Date.now() & 0xffff) | 1; makeData(); resetLearner(); };
+document.getElementById('xorBtn').onclick = () => makeNonSeparable();
+
+const classBtn = document.getElementById('classBtn');
+classBtn.onclick = () => {
+  addClass = -addClass;
+  classBtn.textContent = addClass > 0 ? '✚ adding: cyan' : '✚ adding: magenta';
+  classBtn.classList.toggle('toggled', addClass < 0);
+};
+
+plot.addEventListener('click', e => {
+  const r = plot.getBoundingClientRect();
+  const ux = Math.min(1, Math.max(0, (e.clientX - r.left - PAD) / (P.w - 2 * PAD)));
+  const uy = Math.min(1, Math.max(0, 1 - (e.clientY - r.top - PAD) / (P.h - 2 * PAD)));
+  points.push({ x: ux, y: uy, label: addClass, born: performance.now() });
+  converged = false;
+});
+
+// --- render loop ---
+function frame(t) {
+  if (playing && t - lastTick > 1000 / parseInt(speedSlider.value)) {
+    lastTick = t;
+    visitNext();
+  }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+makeData(); resetLearner();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

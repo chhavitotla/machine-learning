@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backpropagation — Watch Blame Flow Backwards</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    /* file-specific aliases kept for the JS-templated colors */
+    --fwd: var(--cyan);      /* forward activations: cyan */
+    --bwd: var(--magenta);   /* backward gradients: magenta */
+    --good: var(--green);
+    --warn: var(--amber);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .subtitle .fc { color: var(--fwd); font-weight: 600; } .subtitle .bc { color: var(--bwd); font-weight: 600; }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 320px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button:disabled { opacity: 0.35; cursor: default; }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 100px; }
+  .annotation b { color: var(--text); }
+  .annotation.back { border-left-color: var(--bwd); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  .phase-pill {
+    display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; padding: 3px 10px; border-radius: 99px; margin-bottom: 8px;
+  }
+  .legend { font-size: 11.5px; color: var(--faint); display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 03 neural networks</div>
+<h1>Backpropagation</h1>
+<p class="subtitle">Forward to predict, backward to assign blame. A real 2→4→3→1 network with live weights. <span class="fc">Forward pass</span>: activations light up left to right. <span class="bc">Backward pass</span>: each node receives its blame δ, flowing right to left through the <i>same</i> connections. Then weights pulse as they update. Every number is genuinely computed.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="net" width="640" height="460"></canvas>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--fwd)"></span>activation a</span>
+      <span><span class="dot" style="background:var(--bwd)"></span>gradient δ = ∂L/∂z</span>
+      <span><span class="dot" style="background:#3b82f6"></span>weight &gt; 0</span>
+      <span><span class="dot" style="background:#ef4444"></span>weight &lt; 0</span>
+      <span>edge thickness = |weight|</span>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="stepBtn">Step ⏭</button>
+      <button id="playBtn">▶ Auto-train</button>
+      <button id="resetBtn">↺ New network</button>
+    </div>
+    <div class="card">
+      <div class="slider-row">
+        <label>Animation speed <span class="val" id="speedVal">1.0×</span></label>
+        <input type="range" id="speed" min="0.25" max="4" step="0.25" value="1">
+      </div>
+      <div class="slider-row" style="margin-top:10px">
+        <label>Learning rate α <span class="val" id="lrVal">0.5</span></label>
+        <input type="range" id="lr" min="0.05" max="2" step="0.05" value="0.5">
+      </div>
+    </div>
+    <div class="card"><div class="stat-grid" id="readout"></div></div>
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// A REAL TINY NETWORK, TRAINED BY REAL BACKPROP
+//
+// Architecture: 2 inputs → 4 hidden → 3 hidden → 1 output, all sigmoid.
+// Task: fixed input x = [0.7, 0.2], target y = 0.85 (so one training
+// example, watched in extreme slow motion).
+//
+// The phase machine below splits one training step into watchable
+// sub-steps: forward layer 1 → 2 → 3, compute loss, backward 3 → 2 → 1,
+// update weights. The math in forward()/backward() is the algorithm;
+// everything else is theater.
+// ============================================================
+
+const SIZES = [2, 4, 3, 1];
+const X_IN = [0.7, 0.2];
+const TARGET = 0.85;
+
+const sigmoid = z => 1 / (1 + Math.exp(-z));
+// σ'(z) expressed via the activation: σ'(z) = a(1-a). This is why
+// saturated sigmoids (a near 0 or 1) kill the gradient flowing through.
+const dsigmoid = a => a * (1 - a);
+
+let W, B;          // W[l][j][i]: weight from neuron i in layer l to neuron j in layer l+1
+let A, Z, D;       // activations, pre-activations, deltas per layer
+let epoch, lossHistory;
+
+function initNet() {
+  W = []; B = [];
+  for (let l = 0; l < SIZES.length - 1; l++) {
+    W.push(Array.from({length: SIZES[l+1]}, () =>
+      Array.from({length: SIZES[l]}, () => (Math.random() * 2 - 1) * 1.6)));
+    B.push(Array.from({length: SIZES[l+1]}, () => (Math.random() * 2 - 1) * 0.5));
+  }
+  A = SIZES.map(n => new Array(n).fill(null));
+  Z = SIZES.map(n => new Array(n).fill(null));
+  D = SIZES.map(n => new Array(n).fill(null));
+  A[0] = X_IN.slice();
+  epoch = 0; lossHistory = [];
+}
+
+// Forward one layer: z = Wa + b, a = σ(z)
+function forwardLayer(l) {
+  for (let j = 0; j < SIZES[l+1]; j++) {
+    let z = B[l][j];
+    for (let i = 0; i < SIZES[l]; i++) z += W[l][j][i] * A[l][i];
+    Z[l+1][j] = z;
+    A[l+1][j] = sigmoid(z);
+  }
+}
+
+// Backward one layer boundary.
+// At the output: δ = (a - y) · σ'(z)   (squared loss)
+// Hidden:        δ_j = (Σ_k W_kj δ_k) · σ'(z_j)  — blame flows back
+//                through the SAME weights, transposed.
+function backwardLayer(l) {
+  if (l === SIZES.length - 1) {
+    for (let j = 0; j < SIZES[l]; j++)
+      D[l][j] = (A[l][j] - TARGET) * dsigmoid(A[l][j]);
+  } else {
+    for (let j = 0; j < SIZES[l]; j++) {
+      let sum = 0;
+      for (let k = 0; k < SIZES[l+1]; k++) sum += W[l][k][j] * D[l+1][k];
+      D[l][j] = sum * dsigmoid(A[l][j]);
+    }
+  }
+}
+
+// Gradient step: ∂L/∂W_ji = δ_j · a_i  — blame × signal carried.
+function updateWeights(alpha) {
+  for (let l = 0; l < W.length; l++)
+    for (let j = 0; j < SIZES[l+1]; j++) {
+      for (let i = 0; i < SIZES[l]; i++)
+        W[l][j][i] -= alpha * D[l+1][j] * A[l][i];
+      B[l][j] -= alpha * D[l+1][j];
+    }
+}
+
+const loss = () => A[3][0] === null ? null : 0.5 * (A[3][0] - TARGET) ** 2;
+
+// ---------------- phase machine ----------------
+// One full training step = these 8 watchable phases.
+const PHASES = [
+  { id: 'f1', kind: 'fwd', layer: 0 }, { id: 'f2', kind: 'fwd', layer: 1 }, { id: 'f3', kind: 'fwd', layer: 2 },
+  { id: 'loss', kind: 'loss' },
+  { id: 'b3', kind: 'bwd', layer: 3 }, { id: 'b2', kind: 'bwd', layer: 2 }, { id: 'b1', kind: 'bwd', layer: 1 },
+  { id: 'upd', kind: 'upd' },
+];
+let phaseIdx = -1;        // -1 = fresh, nothing run yet
+let animT = 1;            // 0→1 progress of current phase animation
+let playing = false;
+
+function runPhase(p) {
+  if (p.kind === 'fwd') forwardLayer(p.layer);
+  else if (p.kind === 'bwd') backwardLayer(p.layer);
+  else if (p.kind === 'upd') {
+    updateWeights(parseFloat(lrSlider.value));
+    lossHistory.push(loss());
+    epoch++;
+    // wipe activations/deltas for the next pass (input stays)
+    for (let l = 1; l < SIZES.length; l++) { A[l].fill(null); D[l].fill(null); }
+    D[0] && D[0].fill(null);
+  }
+}
+
+function advance() {
+  phaseIdx = (phaseIdx + 1) % PHASES.length;
+  runPhase(PHASES[phaseIdx]);
+  animT = 0;
+  updatePanels();
+}
+
+// ---------------- rendering ----------------
+const canvas = document.getElementById('net');
+const ctx = canvas.getContext('2d');
+(function hidpi() {
+  const r = window.devicePixelRatio || 1;
+  canvas.style.width = canvas.width + 'px'; canvas.style.height = canvas.height + 'px';
+  canvas.width *= r; canvas.height *= r; ctx.scale(r, r);
+})();
+const CW = 640, CH = 460;
+
+// node positions: columns per layer, vertically centered
+function nodePos(l, j) {
+  const x = 70 + l * (CW - 140) / (SIZES.length - 1);
+  const gap = 86;
+  const y = CH / 2 + (j - (SIZES[l] - 1) / 2) * gap;
+  return { x, y };
+}
+
+function draw() {
+  ctx.clearRect(0, 0, CW, CH);
+
+  // faint blueprint grid — pure cosmetics
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1;
+  for (let gx = 40; gx < CW; gx += 40) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, CH); ctx.stroke(); }
+  for (let gy = 40; gy < CH; gy += 40) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(CW, gy); ctx.stroke(); }
+
+  const p = phaseIdx >= 0 ? PHASES[phaseIdx] : null;
+
+  // --- edges ---
+  for (let l = 0; l < SIZES.length - 1; l++) {
+    for (let j = 0; j < SIZES[l+1]; j++) for (let i = 0; i < SIZES[l]; i++) {
+      const a = nodePos(l, i), b = nodePos(l + 1, j);
+      const wgt = W[l][j][i];
+      const active = p && ((p.kind === 'fwd' && p.layer === l) ||
+                           (p.kind === 'bwd' && p.layer === l + 1));
+      const updating = p && p.kind === 'upd';
+      ctx.lineWidth = Math.min(Math.abs(wgt) * 2 + 0.4, 5);
+      ctx.strokeStyle = wgt >= 0 ? 'rgba(59,130,246,0.35)' : 'rgba(239,68,68,0.35)';
+      if (updating) { // pulse on update
+        const pulse = 0.35 + 0.5 * Math.sin(animT * Math.PI);
+        ctx.strokeStyle = wgt >= 0 ? `rgba(74,222,128,${pulse})` : `rgba(251,191,36,${pulse})`;
+      }
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+
+      // signal pulse traveling along active edges
+      if (active && animT < 1) {
+        const fwd = p.kind === 'fwd';
+        const t = fwd ? animT : 1 - animT;        // backward pulses travel right→left
+        const px = a.x + (b.x - a.x) * t, py = a.y + (b.y - a.y) * t;
+        ctx.save();
+        ctx.shadowColor = fwd ? 'rgba(76,201,240,0.9)' : 'rgba(247,37,133,0.9)';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = fwd ? '#4cc9f0' : '#f72585';
+        ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  // --- nodes ---
+  for (let l = 0; l < SIZES.length; l++) for (let j = 0; j < SIZES[l]; j++) {
+    const { x, y } = nodePos(l, j);
+    const a = A[l][j], d = D[l][j];
+    // fill brightness encodes activation value
+    if (a !== null) {
+      const g = ctx.createRadialGradient(x, y, 2, x, y, 24);
+      g.addColorStop(0, `rgba(76,201,240,${0.15 + 0.75 * a})`);
+      g.addColorStop(1, 'rgba(76,201,240,0.05)');
+      ctx.fillStyle = g;
+    } else ctx.fillStyle = '#1c1c26';
+    ctx.save();
+    if (a !== null) { ctx.shadowColor = `rgba(76,201,240,${0.25 + 0.4 * a})`; ctx.shadowBlur = 14; }
+    ctx.beginPath(); ctx.arc(x, y, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    if (d !== null) { ctx.shadowColor = 'rgba(247,37,133,0.6)'; ctx.shadowBlur = 10; }
+    ctx.strokeStyle = d !== null ? '#f72585' : '#3a3a4a';
+    ctx.lineWidth = d !== null ? 2.5 : 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 24, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // activation value inside the node
+    ctx.fillStyle = a !== null ? '#ecedf2' : '#55555f';
+    ctx.font = '600 12px ui-monospace, Menlo, monospace'; ctx.textAlign = 'center';
+    ctx.fillText(a !== null ? a.toFixed(2) : '·', x, y + 4);
+
+    // gradient value below the node, magenta
+    if (d !== null) {
+      ctx.fillStyle = '#f72585'; ctx.font = '600 11px ui-monospace, Menlo, monospace';
+      ctx.fillText('δ ' + d.toFixed(3), x, y + 40);
+    }
+  }
+
+  // layer labels
+  ctx.fillStyle = '#8a8a99'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  const labels = ['input', 'hidden 1', 'hidden 2', 'output'];
+  for (let l = 0; l < SIZES.length; l++) ctx.fillText(labels[l], nodePos(l, 0).x, 22);
+
+  // target marker next to the output node
+  const out = nodePos(3, 0);
+  ctx.fillStyle = '#4ade80'; ctx.textAlign = 'left'; ctx.font = '600 12px sans-serif';
+  ctx.fillText('target y = ' + TARGET, out.x + 34, out.y + 4);
+}
+
+// ---------------- UI panels ----------------
+const lrSlider = document.getElementById('lr');
+const speedSlider = document.getElementById('speed');
+lrSlider.oninput = () => document.getElementById('lrVal').textContent = lrSlider.value;
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = (+speedSlider.value).toFixed(2).replace(/0+$/,'').replace(/\.$/,'') + '×';
+
+const ANN = {
+  fresh: ['#26262f', 'Ready', '<b>Fresh network, random weights.</b> Input x = [0.7, 0.2] is loaded. Hit <b>Step</b> to push it through the first layer, or <b>Auto-train</b> to watch full training. The network is trying to output <b>0.85</b>.'],
+  f1: ['var(--fwd)', 'Forward · layer 1', '<b>Forward, hidden layer 1.</b> Each neuron computes z = Σ wᵢaᵢ + b — a weighted sum of the inputs along its edges (thickness = |w|) — then squashes it: a = σ(z). Node brightness shows the activation.'],
+  f2: ['var(--fwd)', 'Forward · layer 2', '<b>Forward, hidden layer 2.</b> Same recipe, but the inputs are now layer 1\'s activations. Notice information mixing: every node here sees <i>every</i> node before it.'],
+  f3: ['var(--fwd)', 'Forward · output', '<b>Forward, output layer.</b> The network commits to its prediction. Compare it to the green target — the gap is what the backward pass will explain.'],
+  loss: ['var(--warn)', 'Loss', '<b>Loss computed.</b> L = ½(a − y)². One number summarizes how wrong the whole network is. Now: which of the 29 weights is to blame, and by how much? That\'s backprop\'s job.'],
+  b3: ['var(--bwd)', 'Backward · output', '<b>Blame at the output:</b> δ = (a − y)·σ\'(z). The raw error, scaled by how responsive the neuron is. If σ\'(z) ≈ 0 (saturated neuron), blame dies right here — that\'s the vanishing gradient.'],
+  b2: ['var(--bwd)', 'Backward · layer 2', '<b>Blame flows backwards</b> through the same edges, transposed: δⱼ = (Σ Wₖⱼ δₖ)·σ\'(zⱼ). Each neuron inherits blame from every neuron it fed, weighted by how strongly it fed it.'],
+  b1: ['var(--bwd)', 'Backward · layer 1', '<b>Blame reaches layer 1.</b> Notice the δ values shrinking layer by layer — each step multiplies in another σ\' ≤ 0.25. Stack 50 layers and you see why deep sigmoid nets couldn\'t train.'],
+  upd: ['var(--good)', 'Weight update', '<b>Every weight moves:</b> W −= α·δ·a — blame × the signal it carried. Edges pulse as they change. Activations are wiped; the next forward pass will be a little less wrong. That\'s learning.'],
+};
+
+function updatePanels() {
+  const key = phaseIdx < 0 ? 'fresh' : PHASES[phaseIdx].id;
+  const [color, pill, html] = ANN[key];
+  const ann = document.getElementById('annotation');
+  ann.classList.toggle('back', key.startsWith('b'));
+  ann.style.borderLeftColor = color;
+  ann.innerHTML = `<span class="phase-pill" style="background:${color};color:#0f0f13">${pill}</span><br>${html}`;
+
+  const L = loss();
+  const prevL = lossHistory.length ? lossHistory[lossHistory.length - 1] : null;
+  document.getElementById('readout').innerHTML =
+    `<div class="stat"><div class="k">training step</div><div class="v">${epoch}</div></div>` +
+    `<div class="stat"><div class="k">prediction</div><div class="v" style="color:var(--fwd)">${A[3][0] !== null ? A[3][0].toFixed(4) : '—'}</div></div>` +
+    `<div class="stat"><div class="k">target</div><div class="v" style="color:var(--good)">${TARGET}</div></div>` +
+    `<div class="stat"><div class="k">loss</div><div class="v" style="color:var(--warn)">${L !== null ? L.toFixed(6) : (prevL !== null ? prevL.toFixed(6) + ' (last)' : '—')}</div></div>` +
+    (prevL !== null && lossHistory.length > 1 ?
+      `<div class="stat wide"><div class="k">Δ loss last step</div><div class="v" style="color:${lossHistory.at(-1) < lossHistory.at(-2) ? 'var(--good)' : 'var(--red)'}">${(lossHistory.at(-1) - lossHistory.at(-2)).toFixed(6)}</div></div>` : '');
+}
+
+// ---------------- controls & loop ----------------
+document.getElementById('stepBtn').onclick = () => { playing = false; playBtn.textContent = '▶ Auto-train'; advance(); };
+document.getElementById('resetBtn').onclick = () => { initNet(); phaseIdx = -1; animT = 1; updatePanels(); };
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Auto-train';
+};
+
+let lastT = 0;
+function frame(t) {
+  const dt = Math.min(t - lastT, 50); lastT = t;
+  const dur = 900 / parseFloat(speedSlider.value); // ms per phase animation
+  if (animT < 1) animT = Math.min(1, animT + dt / dur);
+  else if (playing) advance();
+  draw();
+  requestAnimationFrame(frame);
+}
+
+initNet(); updatePanels();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

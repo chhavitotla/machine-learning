@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CNNs — Watch a Kernel Slide Across an Image</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 100px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { padding: 7px 11px; font-size: 12px; }
+  .seg button.on {
+    background: rgba(76,201,240,0.14); border-color: rgba(76,201,240,0.5); color: var(--cyan);
+  }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 03 neural networks</div>
+<h1>Convolutional Neural Networks</h1>
+<p class="subtitle">A convolution is just a tiny stencil of weights sliding over an image, taking a dot product at every stop. <b>Watch the 3×3 kernel crawl</b> across the 12×12 image, filling in the feature map cell by cell — then ReLU clips the negatives and max-pooling shrinks the result. <b>Click the image to paint pixels</b> and see the detector respond.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="stage" width="880" height="420"></canvas>
+    <div class="caption">input (paintable) → 3×3 kernel · live dot product → feature map → ReLU + 2×2 max-pool · blue = positive, red = negative</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="stepBtn">Step</button>
+      <button id="resetBtn">↺ Reset</button>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">Image preset</div>
+      <div class="seg" id="imgSeg">
+        <button data-img="diag" class="on">Diagonal edge</button>
+        <button data-img="cross">Cross</button>
+        <button data-img="circle">Circle</button>
+        <button data-img="blank">Blank</button>
+      </div>
+      <div class="chart-label" style="margin-top:14px">Kernel preset</div>
+      <div class="seg" id="kerSeg">
+        <button data-ker="vert" class="on">Vertical edge</button>
+        <button data-ker="horiz">Horizontal edge</button>
+        <button data-ker="sharpen">Sharpen</button>
+        <button data-ker="blur">Blur</button>
+        <button data-ker="random">Learnable (random)</button>
+      </div>
+      <div class="chart-label" style="margin-top:14px">Stride / padding</div>
+      <div class="seg">
+        <button id="stride1" class="on">stride 1</button>
+        <button id="stride2">stride 2</button>
+        <button id="pad0" class="on">valid (pad 0)</button>
+        <button id="pad1">same (pad 1)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Speed <span class="val" id="speedVal">12 cells/s</span></label>
+        <input type="range" id="speed" min="1" max="60" step="1" value="12">
+      </div>
+      <div class="hint">Same 9 weights reused at every position — that's <i>weight sharing</i>, why a conv layer needs 9 parameters where a dense layer would need thousands.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">window @ (row, col)</div><div class="v" style="color:var(--cyan)" id="posVal">—</div></div>
+        <div class="stat"><div class="k">dot product</div><div class="v" style="color:var(--amber)" id="dotVal">—</div></div>
+        <div class="stat"><div class="k">feature map</div><div class="v" id="dimVal">—</div></div>
+        <div class="stat"><div class="k">after pool</div><div class="v" id="poolDimVal">—</div></div>
+      </div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// CONVOLUTION, MADE PHYSICAL
+//
+// out[i][j] = Σ_{u,v} K[u][v] · img[i·stride + u - pad][j·stride + v - pad]
+// then ReLU: max(0, x), then 2x2 max-pool with stride 2.
+//
+// The phase machine computes ONE output cell per step (phase 'conv'),
+// then ONE pooled cell per step (phase 'pool'), so you can watch the
+// sliding window do its dot product and the maps fill in.
+// ============================================================
+
+const N = 12;                 // image is N x N
+const K = 3;                  // kernel is K x K
+
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const S = hidpi(cv);
+
+// --- state ---
+let img = [], kernel = [], kernelName = 'vert';
+let stride = 1, pad = 0;
+let fmap = [], pooled = [];          // filled progressively (null = not yet)
+let phase = 'conv';                  // 'conv' -> 'pool' -> 'done'
+let cell = -1;                       // index of last computed cell in current phase
+let playing = false, lastTick = 0;
+let lastProducts = null;             // the 9 multiplications of the latest window
+
+// deterministic PRNG so "learnable (random)" is reproducible per click
+let rngState = 12345;
+const rng = () => (rngState = (rngState * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+
+// --- image presets ---
+const IMAGES = {
+  diag:   (i, j) => j > i ? 1 : 0,                              // dark upper-left triangle
+  cross:  (i, j) => (i === 5 || i === 6 || j === 5 || j === 6) ? 1 : 0,
+  circle: (i, j) => Math.abs(Math.hypot(i - 5.5, j - 5.5) - 4) < 0.9 ? 1 : 0,
+  blank:  () => 0,
+};
+const KERNELS = {
+  vert:    [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]],   // right-minus-left: fires on vertical edges
+  horiz:   [[-1, -2, -1], [0, 0, 0], [1, 2, 1]],   // bottom-minus-top: horizontal edges
+  sharpen: [[0, -1, 0], [-1, 5, -1], [0, -1, 0]],  // center minus neighbors, amplified
+  blur:    [[1/9, 1/9, 1/9], [1/9, 1/9, 1/9], [1/9, 1/9, 1/9]], // local average
+  random:  null,                                    // generated fresh = an untrained filter
+};
+const KERNEL_STORY = {
+  vert:    'computes <b>right minus left</b> brightness, so it fires where dark meets light along a vertical boundary',
+  horiz:   'computes <b>bottom minus top</b> brightness, so it fires along horizontal boundaries',
+  sharpen: 'amplifies the center against its neighbors — flat regions give back the pixel, edges get exaggerated',
+  blur:    'averages the 3×3 neighborhood, smearing detail — note the feature map is just a softer image',
+  random:  'is an <b>untrained</b> filter: random weights produce a noisy, meaningless map. Training = gradient descent sculpting these 9 numbers into a useful detector',
+};
+
+function setImage(name) {
+  img = Array.from({ length: N }, (_, i) => Array.from({ length: N }, (_, j) => IMAGES[name](i, j)));
+  reset();
+}
+function setKernel(name) {
+  kernelName = name;
+  kernel = name === 'random'
+    ? Array.from({ length: K }, () => Array.from({ length: K }, () => +(rng() * 2 - 1).toFixed(1)))
+    : KERNELS[name].map(r => r.slice());
+  reset();
+}
+
+// output dims for current stride/padding (and pooled dims, floor of half)
+const outDim = () => Math.floor((N + 2 * pad - K) / stride) + 1;
+const poolDim = () => Math.floor(outDim() / 2);
+
+function reset() {
+  const d = outDim(), p = poolDim();
+  fmap = Array.from({ length: d }, () => new Array(d).fill(null));
+  pooled = Array.from({ length: p }, () => new Array(p).fill(null));
+  phase = 'conv'; cell = -1; lastProducts = null;
+  playing = false; document.getElementById('playBtn').textContent = '▶ Play';
+}
+
+// padded image read: out-of-bounds = 0 (this IS zero padding)
+const px = (i, j) => (i < 0 || j < 0 || i >= N || j >= N) ? 0 : img[i][j];
+
+// --- THE ALGORITHM: one output cell = one 3x3 dot product ---
+function convCell(oi, oj) {
+  let acc = 0;
+  const prods = [];
+  for (let u = 0; u < K; u++) for (let v = 0; v < K; v++) {
+    const x = px(oi * stride + u - pad, oj * stride + v - pad);
+    prods.push({ w: kernel[u][v], x, p: kernel[u][v] * x });
+    acc += kernel[u][v] * x;        // Σ weight · pixel — the whole operation
+  }
+  fmap[oi][oj] = acc;
+  lastProducts = { oi, oj, prods, acc };
+}
+
+// one pooled cell = max of a 2x2 patch of relu(fmap)
+function poolCell(pi, pj) {
+  let m = -Infinity;
+  for (let u = 0; u < 2; u++) for (let v = 0; v < 2; v++)
+    m = Math.max(m, Math.max(0, fmap[pi * 2 + u][pj * 2 + v]));  // ReLU then max
+  pooled[pi][pj] = m;
+}
+
+function step() {
+  const d = outDim(), p = poolDim();
+  if (phase === 'conv') {
+    cell++;
+    convCell(Math.floor(cell / d), cell % d);
+    if (cell === d * d - 1) { phase = 'pool'; cell = -1; }
+  } else if (phase === 'pool') {
+    cell++;
+    poolCell(Math.floor(cell / p), cell % p);
+    if (cell === p * p - 1) phase = 'done';
+  }
+}
+
+// --- drawing ---
+// Panel geometry: input | kernel + products | feature map | pooled
+const IMG_X = 18, IMG_Y = 60, IMG_C = 24;          // input grid, 24px cells
+const KER_X = 332, KER_Y = 70, KER_C = 30;
+const PRO_Y = 218;                                  // products mini-grid below kernel
+const FM_X = 470, FM_Y = 60;
+const PL_X = 740, PL_Y = 110;
+
+function cellColor(v, scale) {
+  // signed colormap: blue for +, red for −, intensity ∝ |v|
+  const t = Math.min(Math.abs(v) / scale, 1);
+  return v >= 0 ? `rgba(76,140,240,${0.12 + 0.85 * t})` : `rgba(248,113,113,${0.12 + 0.85 * t})`;
+}
+
+function drawGrid(x0, y0, c, rows, cols) {
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= rows; i++) { ctx.beginPath(); ctx.moveTo(x0, y0 + i * c); ctx.lineTo(x0 + cols * c, y0 + i * c); ctx.stroke(); }
+  for (let j = 0; j <= cols; j++) { ctx.beginPath(); ctx.moveTo(x0 + j * c, y0); ctx.lineTo(x0 + j * c, y0 + rows * c); ctx.stroke(); }
+}
+
+function label(txt, x, y, color) {
+  ctx.fillStyle = color || '#5d5d72'; ctx.font = '700 10.5px sans-serif';
+  ctx.textAlign = 'left'; ctx.fillText(txt.toUpperCase(), x, y);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, S.w, S.h);
+  const d = outDim(), p = poolDim();
+  const fmC = Math.min(24, 240 / d);                 // feature-map cell size fits its panel
+  const plC = Math.min(34, 120 / Math.max(p, 1));
+
+  // ---- input image ----
+  label('input 12×12 · click to paint', IMG_X, IMG_Y - 12);
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const v = img[i][j];
+    ctx.fillStyle = `rgba(236,237,242,${0.06 + 0.84 * v})`;
+    ctx.fillRect(IMG_X + j * IMG_C, IMG_Y + i * IMG_C, IMG_C - 1, IMG_C - 1);
+  }
+  drawGrid(IMG_X, IMG_Y, IMG_C, N, N);
+
+  // sliding window highlight on the input (current = last computed cell)
+  if (lastProducts && phase !== 'pool' && phase !== 'done') {
+    const { oi, oj } = lastProducts;
+    const wx = IMG_X + (oj * stride - pad) * IMG_C, wy = IMG_Y + (oi * stride - pad) * IMG_C;
+    ctx.save();
+    ctx.shadowColor = 'rgba(76,201,240,0.9)'; ctx.shadowBlur = 14;
+    ctx.strokeStyle = '#4cc9f0'; ctx.lineWidth = 2.5;
+    ctx.strokeRect(wx, wy, K * IMG_C, K * IMG_C);
+    ctx.restore();
+  }
+
+  // ---- kernel ----
+  label('kernel 3×3', KER_X, KER_Y - 12);
+  const kScale = Math.max(...kernel.flat().map(Math.abs), 0.01);
+  for (let u = 0; u < K; u++) for (let v = 0; v < K; v++) {
+    ctx.fillStyle = cellColor(kernel[u][v], kScale);
+    ctx.fillRect(KER_X + v * KER_C, KER_Y + u * KER_C, KER_C - 1, KER_C - 1);
+    ctx.fillStyle = '#ecedf2'; ctx.font = '600 10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    ctx.textAlign = 'center';
+    ctx.fillText(fmtW(kernel[u][v]), KER_X + v * KER_C + KER_C / 2, KER_Y + u * KER_C + KER_C / 2 + 3.5);
+  }
+  drawGrid(KER_X, KER_Y, KER_C, K, K);
+
+  // ---- the 9 multiplications of the current window ----
+  if (lastProducts) {
+    label('weight × pixel', KER_X, PRO_Y - 12);
+    const pScale = Math.max(...lastProducts.prods.map(q => Math.abs(q.p)), 0.01);
+    for (let u = 0; u < K; u++) for (let v = 0; v < K; v++) {
+      const q = lastProducts.prods[u * K + v];
+      ctx.fillStyle = cellColor(q.p, pScale);
+      ctx.fillRect(KER_X + v * KER_C, PRO_Y + u * KER_C, KER_C - 1, KER_C - 1);
+      ctx.fillStyle = '#ecedf2'; ctx.font = '600 9.5px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'center';
+      ctx.fillText(fmtW(q.p), KER_X + v * KER_C + KER_C / 2, PRO_Y + u * KER_C + KER_C / 2 + 3.5);
+    }
+    drawGrid(KER_X, PRO_Y, KER_C, K, K);
+    ctx.fillStyle = '#fbbf24'; ctx.font = '700 13px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    ctx.textAlign = 'center';
+    ctx.fillText('Σ = ' + lastProducts.acc.toFixed(2), KER_X + 1.5 * KER_C, PRO_Y + 3 * KER_C + 22);
+  }
+
+  // ---- feature map ----
+  label(`feature map ${d}×${d}`, FM_X, FM_Y - 12);
+  const fScale = Math.max(...fmap.flat().filter(v => v !== null).map(Math.abs), 0.01);
+  for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) {
+    const v = fmap[i][j];
+    ctx.fillStyle = v === null ? 'rgba(255,255,255,0.025)' : cellColor(v, fScale);
+    ctx.fillRect(FM_X + j * fmC, FM_Y + i * fmC, fmC - 1, fmC - 1);
+  }
+  drawGrid(FM_X, FM_Y, fmC, d, d);
+  // highlight: cell just written / 2x2 pool window being read
+  if (lastProducts && phase !== 'pool' && phase !== 'done') {
+    ctx.save(); ctx.shadowColor = 'rgba(251,191,36,0.9)'; ctx.shadowBlur = 10;
+    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+    ctx.strokeRect(FM_X + lastProducts.oj * fmC, FM_Y + lastProducts.oi * fmC, fmC, fmC);
+    ctx.restore();
+  }
+  if (phase === 'pool' && cell >= 0) {
+    const pi = Math.floor(cell / p), pj = cell % p;
+    ctx.save(); ctx.shadowColor = 'rgba(74,222,128,0.9)'; ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#4ade80'; ctx.lineWidth = 2.5;
+    ctx.strokeRect(FM_X + pj * 2 * fmC, FM_Y + pi * 2 * fmC, 2 * fmC, 2 * fmC);
+    ctx.restore();
+  }
+
+  // ---- ReLU + max-pool output ----
+  label(`relu + 2×2 max-pool ${p}×${p}`, PL_X, PL_Y - 12);
+  const plVals = pooled.flat().filter(v => v !== null);
+  const plScale = Math.max(...plVals, 0.01);
+  for (let i = 0; i < p; i++) for (let j = 0; j < p; j++) {
+    const v = pooled[i][j];
+    ctx.fillStyle = v === null ? 'rgba(255,255,255,0.025)' : `rgba(74,222,128,${0.08 + 0.8 * Math.min(v / plScale, 1)})`;
+    ctx.fillRect(PL_X + j * plC, PL_Y + i * plC, plC - 1, plC - 1);
+  }
+  drawGrid(PL_X, PL_Y, plC, p, p);
+
+  // arrows between stages
+  ctx.fillStyle = '#5d5d72'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('⊛', 318, IMG_Y + 6 * IMG_C);
+  ctx.fillText('→', 452, IMG_Y + 6 * IMG_C);
+  ctx.fillText('→', 726, IMG_Y + 6 * IMG_C);
+
+  updateReadout();
+}
+
+const fmtW = v => (Math.abs(v) < 0.005 ? '0' : (v > 0 ? '+' : '') + (Math.abs(v) < 1 ? v.toFixed(1).replace('0.', '.') : v.toFixed(1)));
+
+// strongest-response narration: where does this kernel fire hardest?
+function argmaxFmap() {
+  let best = null, bi = 0, bj = 0;
+  for (let i = 0; i < fmap.length; i++) for (let j = 0; j < fmap.length; j++) {
+    const v = fmap[i][j];
+    if (v !== null && (best === null || Math.abs(v) > Math.abs(best))) { best = v; bi = i; bj = j; }
+  }
+  return best === null ? null : { v: best, i: bi, j: bj };
+}
+
+function updateReadout() {
+  const d = outDim(), p = poolDim();
+  document.getElementById('dimVal').textContent = `${d}×${d}`;
+  document.getElementById('poolDimVal').textContent = `${p}×${p}`;
+  document.getElementById('posVal').textContent = lastProducts ? `(${lastProducts.oi}, ${lastProducts.oj})` : '—';
+  document.getElementById('dotVal').textContent = lastProducts ? lastProducts.acc.toFixed(2) : '—';
+
+  const ann = document.getElementById('annotation');
+  const name = { vert: 'vertical-edge', horiz: 'horizontal-edge', sharpen: 'sharpen', blur: 'blur', random: 'random' }[kernelName];
+  if (cell < 0 && phase === 'conv') {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Ready.</b> The ${name} kernel ${KERNEL_STORY[kernelName]}. Hit <b>Step</b> to compute one output cell — nine weight×pixel products summed — or <b>Play</b> to let it sweep the whole image.`;
+  } else if (phase === 'conv') {
+    const lp = lastProducts;
+    const big = Math.abs(lp.acc) > 0.5;
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Conv @ (${lp.oi}, ${lp.oj}).</b> Nine multiplications, one sum: <b>${lp.acc.toFixed(2)}</b>. ${big
+      ? (lp.acc > 0 ? 'Strong positive response — the patch under the window matches the kernel\'s pattern.' : 'Strong <i>negative</i> response — the patch is the kernel\'s pattern flipped. ReLU will zero this out.')
+      : 'Near zero — the window sits on a flat region, so left-vs-right (or pattern-vs-patch) differences cancel.'}`;
+  } else if (phase === 'pool') {
+    const pi = Math.floor(cell / p), pj = cell % p;
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>ReLU + pool @ (${pi}, ${pj}).</b> Negatives in the green 2×2 window are clipped to 0 (ReLU), then only the <b>max = ${pooled[pi][pj].toFixed(2)}</b> survives. The detection is kept; its exact pixel position is deliberately thrown away.`;
+  } else {
+    const m = argmaxFmap();
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = m && Math.abs(m.v) > 0.05
+      ? `<b>Done.</b> The ${name} kernel fires strongest at <b>row ${m.i}, col ${m.j}</b> (value ${m.v.toFixed(2)}) — ${KERNEL_STORY[kernelName]}. The ${d}×${d} map pooled down to ${p}×${p}: same evidence, quarter the cells. Stack layers of this and detectors compose into eyes, wheels, faces.`
+      : `<b>Done.</b> The feature map is nearly flat — this image contains no pattern the ${name} kernel responds to. Paint some structure into the input and re-run.`;
+  }
+}
+
+// --- controls ---
+function wireSeg(segId, attr, fn) {
+  const seg = document.getElementById(segId);
+  seg.querySelectorAll('button').forEach(b => b.onclick = () => {
+    seg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); fn(b.dataset[attr]);
+  });
+}
+wireSeg('imgSeg', 'img', setImage);
+wireSeg('kerSeg', 'ker', setKernel);
+function toggle(onId, offId, fn) {
+  const a = document.getElementById(onId), b = document.getElementById(offId);
+  a.onclick = () => { a.classList.add('on'); b.classList.remove('on'); fn(); };
+}
+toggle('stride1', 'stride2', () => { stride = 1; reset(); });
+toggle('stride2', 'stride1', () => { stride = 2; reset(); });
+toggle('pad0', 'pad1', () => { pad = 0; reset(); });
+toggle('pad1', 'pad0', () => { pad = 1; reset(); });
+
+document.getElementById('stepBtn').onclick = () => { if (phase !== 'done') step(); };
+document.getElementById('resetBtn').onclick = reset;
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ Pause' : '▶ Play'; };
+const speedSlider = document.getElementById('speed');
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = speedSlider.value + ' cells/s';
+
+// click / drag to paint pixels (toggle on first cell, then paint that value)
+let painting = false, paintVal = 1;
+function paintAt(e) {
+  const r = cv.getBoundingClientRect();
+  const j = Math.floor((e.clientX - r.left - IMG_X) / IMG_C);
+  const i = Math.floor((e.clientY - r.top - IMG_Y) / IMG_C);
+  if (i >= 0 && i < N && j >= 0 && j < N) { img[i][j] = paintVal; reset(); }
+}
+cv.addEventListener('mousedown', e => {
+  const r = cv.getBoundingClientRect();
+  const j = Math.floor((e.clientX - r.left - IMG_X) / IMG_C);
+  const i = Math.floor((e.clientY - r.top - IMG_Y) / IMG_C);
+  if (i >= 0 && i < N && j >= 0 && j < N) { paintVal = img[i][j] > 0.5 ? 0 : 1; painting = true; paintAt(e); }
+});
+cv.addEventListener('mousemove', e => { if (painting) paintAt(e); });
+window.addEventListener('mouseup', () => painting = false);
+
+// --- render loop ---
+function frame(t) {
+  if (playing && t - lastTick > 1000 / parseInt(speedSlider.value)) {
+    lastTick = t;
+    if (phase !== 'done') step();
+    else { playing = false; playBtn.textContent = '▶ Play'; }
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+
+setKernel('vert');
+setImage('diag');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DBSCAN — Watch Density Flood-Fill Arbitrary Shapes</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 02 unsupervised learning</div>
+<h1>DBSCAN</h1>
+<p class="subtitle">No K to choose, no centers to drop. A cluster is wherever points are <b>dense</b>: core points (≥ min_samples neighbors within ε) chain to other core points, and color floods outward through the chain. <b>Move your mouse over the canvas</b> to feel the ε radius, load a shape k-means can't handle, and hit <b>Run</b>.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="460"></canvas>
+    <div class="caption">bright ring = core · small dot = border · gray ✕ = noise · click to add points · circle under mouse = ε</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Run</button>
+      <button id="stepBtn">Step</button>
+      <button id="resetBtn">↺ Reset</button>
+      <button id="moonsBtn">🌙 Two moons</button>
+      <button id="blobsBtn">🫧 Blobs + noise</button>
+      <button id="ringsBtn">◎ Ring in a ring</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>ε — neighborhood radius <span class="val" id="epsVal">34 px</span></label>
+        <input type="range" id="eps" min="10" max="80" step="1" value="34">
+      </div>
+      <div class="slider-row">
+        <label>min_samples <span class="val" id="minVal">4</span></label>
+        <input type="range" id="minSamples" min="2" max="12" step="1" value="4">
+      </div>
+      <div class="hint">ε too small → everything is noise. ε too big → the moons fuse into one blob. There is no ε that works when one cluster is dense and another sparse — DBSCAN's honest weakness.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">clusters found</div><div class="v" style="color:var(--cyan)" id="clusterVal">—</div></div>
+        <div class="stat"><div class="k">noise points</div><div class="v" style="color:var(--red)" id="noiseVal">—</div></div>
+        <div class="stat"><div class="k">visited</div><div class="v" id="visitVal">0 / 0</div></div>
+        <div class="stat"><div class="k">queue</div><div class="v" style="color:var(--amber)" id="queueVal">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// DBSCAN, run one point-visit at a time so the region growing is visible.
+//   CORE:   ≥ min_samples neighbors within ε  → can EXTEND a cluster
+//   BORDER: within ε of a core point          → joins, but can't extend
+//   NOISE:  neither                           → belongs to nothing
+// Expansion is a plain BFS: seed at any unvisited core point, push its
+// neighbors onto a queue, and keep absorbing — every core point reached
+// adds ITS neighbors too, so color chains through dense regions and stops
+// dead at sparse gaps. That chaining is why shape doesn't matter.
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+
+const COLORS = ['#4cc9f0', '#f72585', '#fbbf24', '#4ade80', '#a78bfa', '#fb923c', '#34d399', '#60a5fa'];
+const NOISE = -1;
+
+// --- state (points live in raw pixel coordinates; ε is in pixels too,
+//     so the mouse circle and the algorithm use the SAME distance) ---
+let points = [];     // {x, y, label: null|-1|id, type: null|'core'|'border'|'noise', visitedAt}
+let scanIdx = 0;     // outer-loop cursor over unvisited points
+let queue = [];      // BFS frontier of the cluster currently growing
+let cluster = -1;    // id of the cluster currently growing
+let running = false, finished = false, playing = false, lastStep = 0;
+let mouse = null;
+let lastNarration = null;
+
+function gauss(mu, sigma) {
+  const u1 = Math.random(), u2 = Math.random();
+  return mu + sigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+function addPoint(x, y) { points.push({ x, y, label: null, type: null, visitedAt: 0, born: performance.now() }); }
+
+// --- preset generators: shapes k-means cannot cluster ---
+function twoMoons() {
+  points = [];
+  for (let i = 0; i < 110; i++) {                       // upper crescent
+    const t = Math.random() * Math.PI;
+    addPoint(170 + 130 * Math.cos(t) + gauss(0, 9), 220 - 110 * Math.sin(t) + gauss(0, 9));
+  }
+  for (let i = 0; i < 110; i++) {                       // lower crescent, interleaved
+    const t = Math.random() * Math.PI;
+    addPoint(290 - 130 * Math.cos(t) + 120 + gauss(0, 9), 240 + 110 * Math.sin(t) - 55 + gauss(0, 9));
+  }
+  resetRun();
+}
+function blobsNoise() {
+  points = [];
+  for (const [cx, cy] of [[150, 140], [430, 160], [290, 350]])
+    for (let i = 0; i < 55; i++) addPoint(gauss(cx, 26), gauss(cy, 26));
+  for (let i = 0; i < 30; i++)                          // uniform background noise
+    addPoint(20 + Math.random() * (P.w - 40), 20 + Math.random() * (P.h - 40));
+  resetRun();
+}
+function ringInRing() {
+  points = [];
+  for (let i = 0; i < 90; i++) {                        // inner ring
+    const t = Math.random() * 2 * Math.PI;
+    addPoint(290 + 65 * Math.cos(t) + gauss(0, 7), 230 + 65 * Math.sin(t) + gauss(0, 7));
+  }
+  for (let i = 0; i < 150; i++) {                       // outer ring — same center!
+    const t = Math.random() * 2 * Math.PI;
+    addPoint(290 + 175 * Math.cos(t) + gauss(0, 7), 230 + 175 * Math.sin(t) + gauss(0, 7));
+  }
+  resetRun();
+}
+
+function resetRun() {
+  for (const p of points) { p.label = null; p.type = null; p.visitedAt = 0; }
+  scanIdx = 0; queue = []; cluster = -1; running = false; finished = false;
+  playing = false; playBtn.textContent = '▶ Run';
+  lastNarration = null;
+}
+
+// --- the algorithm, one visit per step ---
+function neighbors(i) {
+  // brute force: honest O(n) per query, plenty at this scale
+  const e = parseInt(epsSlider.value), out = [];
+  for (let j = 0; j < points.length; j++) {
+    if (Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y) <= e) out.push(j);
+  }
+  return out;
+}
+
+function step() {
+  if (finished || points.length === 0) return;
+  running = true;
+  const minPts = parseInt(minSamplesSlider.value);
+  const now = performance.now();
+
+  if (queue.length > 0) {
+    // EXPANSION: pull one point off the BFS frontier of the growing cluster
+    const j = queue.shift();
+    const p = points[j];
+    if (p.label === NOISE) {
+      // previously dismissed as noise, but reachable from a core point → border
+      p.label = cluster; p.type = 'border'; p.visitedAt = now;
+      lastNarration = { kind: 'rescue', j };
+      return;
+    }
+    if (p.label !== null) { lastNarration = { kind: 'skip', j }; return; }  // already claimed
+    p.label = cluster; p.visitedAt = now;
+    const nbrs = neighbors(j);
+    if (nbrs.length >= minPts) {
+      p.type = 'core';
+      queue.push(...nbrs.filter(q => points[q].label === null || points[q].label === NOISE));
+      lastNarration = { kind: 'core', j, n: nbrs.length, grew: true };
+    } else {
+      p.type = 'border';     // inside the cluster's reach, but too sparse to extend it
+      lastNarration = { kind: 'border', j, n: nbrs.length };
+    }
+    return;
+  }
+
+  // SEEDING: queue empty → scan for the next unvisited point to start from
+  while (scanIdx < points.length && points[scanIdx].label !== null) scanIdx++;
+  if (scanIdx >= points.length) {
+    finished = true; running = false;
+    playing = false; playBtn.textContent = '▶ Run';
+    lastNarration = { kind: 'done' };
+    return;
+  }
+  const i = scanIdx;
+  const nbrs = neighbors(i);
+  points[i].visitedAt = now;
+  if (nbrs.length < minPts) {
+    points[i].label = NOISE; points[i].type = 'noise';   // may be rescued as border later
+    lastNarration = { kind: 'noise', i, n: nbrs.length };
+  } else {
+    cluster++;                                           // a new cluster is born here
+    points[i].label = cluster; points[i].type = 'core';
+    queue = nbrs.filter(q => points[q].label === null || points[q].label === NOISE);
+    lastNarration = { kind: 'seed', i, n: nbrs.length };
+  }
+}
+
+// --- drawing ---
+function draw(now) {
+  ctx.clearRect(0, 0, P.w, P.h);
+
+  // faint blueprint grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = 12 + i * (P.w - 24) / 10, gy = 12 + i * (P.h - 24) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, 12); ctx.lineTo(gx, P.h - 12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12, gy); ctx.lineTo(P.w - 12, gy); ctx.stroke();
+  }
+
+  const e = parseInt(epsSlider.value);
+
+  // ε circle following the mouse — so the user FEELS the scale of "dense"
+  if (mouse) {
+    ctx.fillStyle = 'rgba(76,201,240,0.06)';
+    ctx.strokeStyle = 'rgba(76,201,240,0.35)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(mouse.x, mouse.y, e, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+
+  for (const p of points) {
+    const col = p.label !== null && p.label >= 0 ? COLORS[p.label % COLORS.length] : null;
+    const age = Math.min((now - (p.born || 0)) / 300, 1);
+
+    if (p.type === 'core') {
+      // freshly-visited core points pulse their ε-circle: the reach made visible
+      const pulse = (now - p.visitedAt) / 700;
+      if (pulse < 1) {
+        ctx.strokeStyle = col + Math.floor((1 - pulse) * 100).toString(16).padStart(2, '0');
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(p.x, p.y, e * (0.35 + 0.65 * pulse), 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.save();
+      ctx.shadowColor = col; ctx.shadowBlur = 12;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.stroke();
+    } else if (p.type === 'border') {
+      ctx.fillStyle = col + 'aa';                       // dimmer: member, not engine
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2); ctx.fill();
+    } else if (p.type === 'noise') {
+      ctx.strokeStyle = '#6b6b80'; ctx.lineWidth = 1.5; // gray ✕: belongs to nothing
+      ctx.beginPath();
+      ctx.moveTo(p.x - 4, p.y - 4); ctx.lineTo(p.x + 4, p.y + 4);
+      ctx.moveTo(p.x + 4, p.y - 4); ctx.lineTo(p.x - 4, p.y + 4);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = 'rgba(154,154,176,0.55)';         // unvisited
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3 * (0.4 + 0.6 * age), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // highlight the BFS frontier: amber halos on queued points
+  ctx.strokeStyle = 'rgba(251,191,36,0.45)'; ctx.lineWidth = 1;
+  for (const j of queue.slice(0, 60)) {
+    ctx.beginPath(); ctx.arc(points[j].x, points[j].y, 7, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  if (points.length === 0) {
+    ctx.fillStyle = '#5d5d72'; ctx.font = '600 15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Load a preset shape — or click to place points', P.w / 2, P.h / 2);
+  }
+
+  updateReadout();
+}
+
+function updateReadout() {
+  const visited = points.filter(p => p.label !== null).length;
+  const noise = points.filter(p => p.label === NOISE).length;
+  document.getElementById('clusterVal').textContent = cluster >= 0 ? cluster + 1 : '—';
+  document.getElementById('noiseVal').textContent = running || finished ? noise : '—';
+  document.getElementById('visitVal').textContent = `${visited} / ${points.length}`;
+  document.getElementById('queueVal').textContent = running && !finished ? queue.length : '—';
+
+  document.getElementById('statusBadge').innerHTML = finished
+    ? `<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ done — ${cluster + 1} cluster${cluster === 0 ? '' : 's'}, ${noise} noise</span>` : '';
+
+  const ann = document.getElementById('annotation');
+  const nar = lastNarration;
+  if (!nar) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = '<b>Ready.</b> Sweep the mouse to feel ε, then <b>Run</b>. DBSCAN never asks for K — it discovers however many dense regions exist, and shrugs off the rest as noise. Try <b>◎ Ring in a ring</b>: no centroid method can separate concentric shapes.';
+  } else if (nar.kind === 'seed') {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>New cluster ${cluster + 1} born.</b> This point has ${nar.n} neighbors within ε (≥ min_samples) — a <b>core</b> point. Its whole neighborhood goes on the queue, and the flood-fill begins.`;
+  } else if (nar.kind === 'core') {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Chain extended.</b> A queued point turned out to be core too (${nar.n} neighbors), so cluster ${cluster + 1} absorbs <i>its</i> neighborhood as well. Density chaining is why the cluster bends around any shape — it never consults a center, only local crowding.`;
+  } else if (nar.kind === 'border') {
+    ann.style.borderLeftColor = 'var(--magenta)';
+    ann.innerHTML = `<b>Border point.</b> Reachable from a core point, but only ${nar.n} neighbors of its own — it joins cluster ${cluster + 1} yet cannot extend it. This is how clusters get crisp edges instead of leaking outward forever.`;
+  } else if (nar.kind === 'rescue') {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>Noise rescued.</b> A point written off as noise earlier turned out to sit within ε of cluster ${cluster + 1}'s core — promoted to <b>border</b>. Labels aren't final until every chain has run out.`;
+  } else if (nar.kind === 'noise') {
+    ann.style.borderLeftColor = 'var(--red)';
+    ann.innerHTML = `<b>Noise.</b> Only ${nar.n} neighbor${nar.n === 1 ? '' : 's'} within ε, and no core point claims it. K-means would force this point into some cluster; DBSCAN is allowed to say "this belongs to nothing".`;
+  } else if (nar.kind === 'skip') {
+    ann.style.borderLeftColor = 'var(--faint)';
+    ann.innerHTML = `<b>Already claimed.</b> The queue revisited a point that another part of the chain absorbed first — skipped. BFS frontiers overlap; labels don't.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Finished.</b> ${cluster + 1} dense region${cluster === 0 ? '' : 's'} found by chaining, ${points.filter(p => p.label === NOISE).length} points left as noise. The one ε is global, though — if one cluster were much sparser than another, no single ε could see both. That's where OPTICS / HDBSCAN pick up.`;
+  }
+}
+
+// --- controls ---
+const epsSlider = document.getElementById('eps');
+const minSamplesSlider = document.getElementById('minSamples');
+epsSlider.oninput = () => { document.getElementById('epsVal').textContent = epsSlider.value + ' px'; };
+minSamplesSlider.oninput = () => { document.getElementById('minVal').textContent = minSamplesSlider.value; };
+epsSlider.oninput(); minSamplesSlider.oninput();
+
+document.getElementById('stepBtn').onclick = step;
+document.getElementById('resetBtn').onclick = resetRun;
+document.getElementById('moonsBtn').onclick = twoMoons;
+document.getElementById('blobsBtn').onclick = blobsNoise;
+document.getElementById('ringsBtn').onclick = ringInRing;
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  if (finished) resetRun();
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Run';
+};
+
+plot.addEventListener('click', e => {
+  const r = plot.getBoundingClientRect();
+  addPoint(e.clientX - r.left, e.clientY - r.top);
+  if (finished) { finished = false; }   // new point: the labeling is stale
+});
+plot.addEventListener('mousemove', e => {
+  const r = plot.getBoundingClientRect();
+  mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+});
+plot.addEventListener('mouseleave', () => { mouse = null; });
+
+// --- render loop: play visits ~30 points/s so the flood-fill reads as motion ---
+function frame(t) {
+  if (playing && t - lastStep > 33) {
+    lastStep = t;
+    step(); step();   // two visits per tick keeps big presets brisk
+  }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+twoMoons();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

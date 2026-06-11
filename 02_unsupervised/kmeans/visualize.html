@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>K-Means — Watch Assign / Update Carve the Plane</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 02 unsupervised learning</div>
+<h1>K-Means Clustering</h1>
+<p class="subtitle">No labels, no teacher — just <b>assign</b> every point to its nearest centroid, then <b>update</b> every centroid to the mean of its flock, forever, until nothing moves. <b>Click the canvas to place points</b> (or scatter blobs), drop K centroids, and watch the two phases alternate. The tinted territories are each centroid's Voronoi cell.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="460"></canvas>
+    <div class="caption">click to add data points · big glowing rings = centroids · tinted regions = nearest-centroid territory</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="stepBtn">Step</button>
+      <button id="initBtn">⊕ Initialize</button>
+      <button id="blobBtn">🎲 Scatter blobs</button>
+      <button id="resetBtn">↺ Reset</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>K (number of clusters) <span class="val" id="kVal">3</span></label>
+        <input type="range" id="kSlider" min="2" max="8" step="1" value="3">
+      </div>
+      <div class="slider-row">
+        <label>Speed <span class="val" id="speedVal">2 phases/s</span></label>
+        <input type="range" id="speed" min="1" max="10" step="1" value="2">
+      </div>
+      <div class="hint">Try K = 5 on 3 blobs and watch k-means happily invent clusters that aren't there — it always returns exactly K, real or not.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">iteration</div><div class="v" id="iterVal">0</div></div>
+        <div class="stat"><div class="k">next phase</div><div class="v" style="color:var(--cyan)" id="phaseVal">—</div></div>
+        <div class="stat wide"><div class="k">inertia (within-cluster Σ d²)</div><div class="v" style="color:var(--amber)" id="inertiaVal">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// K-MEANS (Lloyd's algorithm)
+// Repeat two phases until assignments stop changing:
+//   ASSIGN: label(p) = argmin_k ||p - centroid_k||²
+//   UPDATE: centroid_k = mean of points labeled k
+// Objective: inertia = Σ ||p - centroid_label(p)||²
+// Each phase can only lower inertia, so convergence is guaranteed
+// (to a LOCAL optimum — the init decides which one).
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+
+// up to 8 cluster colors (K slider max is 8)
+const COLORS = ['#4cc9f0', '#f72585', '#fbbf24', '#4ade80', '#a78bfa', '#fb923c', '#f87171', '#34d399'];
+const UNASSIGNED = '#7a7a90';
+
+// --- state (all coordinates in [0,1]², mapped to pixels only at draw time) ---
+let points = [];        // {x, y, cluster, flashUntil, born}
+let centroids = [];     // {x, y, drawX, drawY, trail: [{x,y,t}]}
+let phase = 'assign';   // which phase Step will perform next
+let iter = 0;
+let playing = false, lastStep = 0;
+let converged = false;
+let lastNarration = null;
+
+const X = u => 12 + u * (P.w - 24);
+const Y = u => 12 + u * (P.h - 24);
+
+// --- data generators ---
+function gauss(mu, sigma) {
+  const u1 = Math.random(), u2 = Math.random();
+  return mu + sigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+function scatterBlobs() {
+  // three gaussian blobs at random-ish positions — structure for k-means to find
+  const centers = [[0.25, 0.3], [0.72, 0.28], [0.5, 0.75]].map(
+    ([x, y]) => [x + (Math.random() - 0.5) * 0.1, y + (Math.random() - 0.5) * 0.1]);
+  for (const [cx, cy] of centers) {
+    for (let i = 0; i < 30; i++) {
+      points.push({ x: Math.min(0.97, Math.max(0.03, gauss(cx, 0.06))),
+                    y: Math.min(0.97, Math.max(0.03, gauss(cy, 0.06))),
+                    cluster: -1, flashUntil: 0, born: performance.now() });
+    }
+  }
+  softReset();
+}
+
+function softReset() {
+  // clear the fit but keep the data
+  centroids = []; phase = 'assign'; iter = 0; converged = false; lastNarration = null;
+  for (const p of points) p.cluster = -1;
+}
+
+// --- the algorithm ---
+function dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
+
+function nearestCentroid(p) {
+  let best = 0, bestD = Infinity;
+  for (let k = 0; k < centroids.length; k++) {
+    const d = dist2(p.x, p.y, centroids[k].x, centroids[k].y);
+    if (d < bestD) { bestD = d; best = k; }
+  }
+  return best;
+}
+
+function inertia() {
+  // within-cluster sum of squared distances — THE quantity k-means minimizes
+  let s = 0;
+  for (const p of points) if (p.cluster >= 0) s += dist2(p.x, p.y, centroids[p.cluster].x, centroids[p.cluster].y);
+  return s;
+}
+
+function initialize() {
+  if (points.length < 2) return;
+  softReset();
+  const K = Math.min(parseInt(kSlider.value), points.length);
+  // plain random init: pick K distinct data points as starting centroids
+  const idx = [...points.keys()];
+  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+  centroids = idx.slice(0, K).map(i => ({
+    x: points[i].x, y: points[i].y,
+    drawX: points[i].x, drawY: points[i].y, trail: []
+  }));
+  lastNarration = { kind: 'init', K };
+}
+
+function stepAssign() {
+  // PHASE A: every point pledges allegiance to its nearest centroid
+  let changed = 0;
+  const now = performance.now();
+  for (const p of points) {
+    const k = nearestCentroid(p);
+    if (k !== p.cluster) { changed++; p.flashUntil = now + 450; }  // flash-line to new owner
+    p.cluster = k;
+  }
+  converged = (changed === 0);
+  lastNarration = { kind: 'assign', changed };
+  phase = 'update';
+  if (converged) { playing = false; playBtn.textContent = '▶ Play'; }
+}
+
+function stepUpdate() {
+  // PHASE B: every centroid glides to the mean of its cluster
+  let maxMove = 0, mover = 0;
+  for (let k = 0; k < centroids.length; k++) {
+    const members = points.filter(p => p.cluster === k);
+    if (members.length === 0) continue;            // empty cluster: centroid stays put
+    const mx = members.reduce((s, p) => s + p.x, 0) / members.length;
+    const my = members.reduce((s, p) => s + p.y, 0) / members.length;
+    const c = centroids[k];
+    const move = Math.hypot(mx - c.x, my - c.y);
+    if (move > maxMove) { maxMove = move; mover = k; }
+    c.trail.push({ x: c.x, y: c.y, t: performance.now() });   // fading trail of past positions
+    if (c.trail.length > 12) c.trail.shift();
+    c.x = mx; c.y = my;                                       // the math jumps; the drawing eases
+  }
+  iter++;
+  lastNarration = { kind: 'update', maxMove, mover };
+  phase = 'assign';
+}
+
+function step() {
+  if (centroids.length === 0 || converged) return;
+  if (phase === 'assign') stepAssign(); else stepUpdate();
+}
+
+// --- drawing ---
+function drawVoronoi() {
+  // Voronoi territories, computed honestly but cheaply: color a coarse grid
+  // of cells by which centroid is nearest — each step redraws the territory map.
+  const CELL = 14;
+  for (let gy = 0; gy < P.h; gy += CELL) {
+    for (let gx = 0; gx < P.w; gx += CELL) {
+      const ux = (gx + CELL / 2 - 12) / (P.w - 24), uy = (gy + CELL / 2 - 12) / (P.h - 24);
+      let best = 0, bestD = Infinity;
+      for (let k = 0; k < centroids.length; k++) {
+        // use the EASED draw position so territory glides with the centroid
+        const d = dist2(ux, uy, centroids[k].drawX, centroids[k].drawY);
+        if (d < bestD) { bestD = d; best = k; }
+      }
+      ctx.fillStyle = COLORS[best % COLORS.length] + '14';   // ~8% alpha tint
+      ctx.fillRect(gx, gy, CELL - 1, CELL - 1);
+    }
+  }
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = 12 + i * (P.w - 24) / 10, gy = 12 + i * (P.h - 24) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, 12); ctx.lineTo(gx, P.h - 12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12, gy); ctx.lineTo(P.w - 12, gy); ctx.stroke();
+  }
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, P.w, P.h);
+  if (centroids.length > 0) drawVoronoi();
+  drawGrid();
+
+  // centroid trails: fading breadcrumbs of where each centroid has been
+  for (let k = 0; k < centroids.length; k++) {
+    const c = centroids[k];
+    for (const tr of c.trail) {
+      const age = (now - tr.t) / 4000;
+      if (age >= 1) continue;
+      ctx.fillStyle = COLORS[k % COLORS.length] + Math.floor((1 - age) * 60).toString(16).padStart(2, '0');
+      ctx.beginPath(); ctx.arc(X(tr.x), Y(tr.y), 4 * (1 - age) + 1.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // assignment flash-lines: brief threads from freshly-reassigned points to their new centroid
+  for (const p of points) {
+    if (p.cluster < 0 || now > p.flashUntil) continue;
+    const a = (p.flashUntil - now) / 450;
+    const c = centroids[p.cluster];
+    ctx.strokeStyle = COLORS[p.cluster % COLORS.length] + Math.floor(a * 150).toString(16).padStart(2, '0');
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(X(p.x), Y(p.y)); ctx.lineTo(X(c.drawX), Y(c.drawY)); ctx.stroke();
+  }
+
+  // data points, colored by current cluster, pop-in when freshly clicked
+  for (const p of points) {
+    const age = Math.min((now - (p.born || 0)) / 300, 1);
+    const col = p.cluster >= 0 ? COLORS[p.cluster % COLORS.length] : UNASSIGNED;
+    ctx.save();
+    ctx.shadowColor = col; ctx.shadowBlur = p.cluster >= 0 ? 8 : 3;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 4 * (0.4 + 0.6 * age), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // centroids: big glowing rings, eased toward their true (mathematical) position
+  for (let k = 0; k < centroids.length; k++) {
+    const c = centroids[k];
+    c.drawX += (c.x - c.drawX) * 0.12;   // the glide — presentation only
+    c.drawY += (c.y - c.drawY) * 0.12;
+    const col = COLORS[k % COLORS.length];
+    ctx.save();
+    ctx.shadowColor = col; ctx.shadowBlur = 18;
+    ctx.strokeStyle = col; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.arc(X(c.drawX), Y(c.drawY), 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(X(c.drawX), Y(c.drawY), 3, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.font = '700 10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(String(k + 1), X(c.drawX), Y(c.drawY) - 16);
+  }
+
+  if (points.length === 0) {
+    ctx.fillStyle = '#5d5d72'; ctx.font = '600 15px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Click anywhere to place data points — or hit 🎲 Scatter blobs', P.w / 2, P.h / 2);
+  }
+
+  updateReadout();
+}
+
+function updateReadout() {
+  document.getElementById('iterVal').textContent = iter;
+  document.getElementById('phaseVal').textContent = centroids.length ? (phase === 'assign' ? 'A · assign' : 'B · update') : '—';
+  document.getElementById('inertiaVal').textContent =
+    centroids.length && points.some(p => p.cluster >= 0) ? inertia().toFixed(4) : '—';
+
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = converged
+    ? '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ converged — no assignment changed</span>' : '';
+
+  const ann = document.getElementById('annotation');
+  if (converged) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Converged after ${iter} iterations.</b> The last assign pass changed nothing, so the next update wouldn't move any centroid — a fixed point. This is a <i>local</i> optimum: hit <b>⊕ Initialize</b> again and you may land somewhere with different inertia.`;
+  } else if (!lastNarration) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = points.length === 0
+      ? '<b>Empty canvas.</b> Click to place data points, or <b>🎲 Scatter blobs</b> for 3 gaussian clusters. Then <b>⊕ Initialize</b> drops K centroids on random data points.'
+      : `<b>${points.length} points placed.</b> Hit <b>⊕ Initialize</b> to drop K centroids (chosen as random data points), then <b>Step</b> through the assign/update dance.`;
+  } else if (lastNarration.kind === 'init') {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Initialized.</b> ${lastNarration.K} centroids dropped on random data points — a deliberately dumb init. Next: <b>phase A</b>, where every point joins its nearest centroid's territory.`;
+  } else if (lastNarration.kind === 'assign') {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Phase A — assign.</b> ${lastNarration.changed} point${lastNarration.changed === 1 ? '' : 's'} changed allegiance to a nearer centroid. Inertia can only drop or hold. Next: <b>phase B</b> moves each centroid to its cluster's mean.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--magenta)';
+    ann.innerHTML = `<b>Phase B — update.</b> Each centroid glided to the mean of its members; centroid ${lastNarration.mover + 1} moved farthest (${lastNarration.maxMove.toFixed(3)}). The mean minimizes squared distance within a fixed cluster — inertia drops again. Back to <b>phase A</b>.`;
+  }
+}
+
+// --- controls ---
+const kSlider = document.getElementById('kSlider');
+const speedSlider = document.getElementById('speed');
+kSlider.oninput = () => document.getElementById('kVal').textContent = kSlider.value;
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = speedSlider.value + ' phases/s';
+kSlider.oninput(); speedSlider.oninput();
+
+document.getElementById('stepBtn').onclick = step;
+document.getElementById('initBtn').onclick = initialize;
+document.getElementById('blobBtn').onclick = scatterBlobs;
+document.getElementById('resetBtn').onclick = () => { points = []; softReset(); };
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  if (centroids.length === 0) initialize();
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+};
+
+plot.addEventListener('click', e => {
+  const r = plot.getBoundingClientRect();
+  points.push({
+    x: Math.min(1, Math.max(0, (e.clientX - r.left - 12) / (P.w - 24))),
+    y: Math.min(1, Math.max(0, (e.clientY - r.top - 12) / (P.h - 24))),
+    cluster: -1, flashUntil: 0, born: performance.now()
+  });
+  converged = false;   // new data: the fixed point may no longer hold
+});
+
+// --- render loop ---
+function frame(t) {
+  if (playing && t - lastStep > 1000 / parseInt(speedSlider.value)) {
+    lastStep = t;
+    step();
+  }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

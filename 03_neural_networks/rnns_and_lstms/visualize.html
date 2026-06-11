@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RNNs &amp; LSTMs — An Unrolled Chain, and Where Gradients Go to Die</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 740px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 110px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { padding: 7px 11px; font-size: 12px; }
+  .seg button.on {
+    background: rgba(76,201,240,0.14); border-color: rgba(76,201,240,0.5); color: var(--cyan);
+  }
+  .seg button.grad.on {
+    background: rgba(247,37,133,0.14); border-color: rgba(247,37,133,0.5); color: var(--magenta);
+  }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 03 neural networks</div>
+<h1>RNNs &amp; LSTMs</h1>
+<p class="subtitle">A recurrent network is one cell applied over and over: feed in <b>"hello world"</b> a character at a time and the unrolled chain grows left to right, every hidden state genuinely computed from seeded weights. Then flip on <b>gradient flow</b> and watch the backward pass: the RNN's gradient shrinks by a factor &lt; 1 at every step back — the LSTM's cell-state highway keeps it alive.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="stage" width="930" height="470"></canvas>
+    <div class="caption" id="cap">cyan/red bars = hidden state h (blue +, red −) · each column is one timestep of the same cell</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="stepBtn">Step</button>
+      <button id="resetBtn">↺ Reset</button>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">Cell type</div>
+      <div class="seg" id="modeSeg">
+        <button data-mode="rnn" class="on">Vanilla RNN</button>
+        <button data-mode="lstm">LSTM</button>
+      </div>
+      <div class="chart-label" style="margin-top:14px">Backward pass</div>
+      <div class="seg">
+        <button id="gradBtn" class="grad">Gradient flow: off</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Speed <span class="val" id="speedVal">3 chars/s</span></label>
+        <input type="range" id="speed" min="1" max="12" step="1" value="3">
+      </div>
+      <div class="hint">The gradient bars are <b>linear scale</b> on purpose: when the RNN bars vanish from view, that is literally what the optimizer sees — step 0 contributes nothing to learning.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">step / char</div><div class="v" style="color:var(--cyan)" id="stepVal">—</div></div>
+        <div class="stat"><div class="k">‖h‖</div><div class="v" id="hVal">—</div></div>
+        <div class="stat"><div class="k">local grad factor</div><div class="v" style="color:var(--magenta)" id="facVal">—</div></div>
+        <div class="stat"><div class="k">grad reaching step 0</div><div class="v" style="color:var(--amber)" id="prodVal">—</div></div>
+      </div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// AN RNN AND AN LSTM, UNROLLED OVER "hello world"
+//
+// RNN:   h_t = tanh(W x_t + U h_{t-1} + b)
+//        backward factor per step: ‖diag(1−h_t²)·U‖₂  (spectral norm)
+//
+// LSTM:  f,i,o = σ(W·[x,h]+b),  g = tanh(W·[x,h])
+//        c_t = f⊙c_{t-1} + i⊙g     h_t = o⊙tanh(c_t)
+//        backward factor along the cell highway: max(f_t)
+//        (∂c_t/∂c_{t-1} ≈ diag(f_t); a diagonal's norm is its max entry)
+//
+// Everything is computed once at load from SEEDED weights — the
+// step/play machinery only controls how much of it you see.
+// ============================================================
+
+const TEXT = 'hello world';
+const T = TEXT.length;
+const H = 8;                                   // hidden units per state
+
+// --- seeded PRNG (mulberry32) + Box-Muller gaussian, so every reload
+//     shows the same weights and the same numbers ---
+let seed = 42;
+function rand() {
+  seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+const gauss = s => s * Math.sqrt(-2 * Math.log(rand() + 1e-12)) * Math.cos(2 * Math.PI * rand());
+const mat = (r, c, s) => Array.from({ length: r }, () => Array.from({ length: c }, () => gauss(s)));
+const matvec = (M, v) => M.map(row => row.reduce((a, w, i) => a + w * v[i], 0));
+const sigmoid = z => 1 / (1 + Math.exp(-z));
+const vnorm = v => Math.hypot(...v);
+
+// spectral norm (largest singular value) via power iteration on MᵀM —
+// the honest "how much does multiplying by M stretch a vector" number
+function spectralNorm(M) {
+  let v = new Array(M[0].length).fill(1);
+  for (let k = 0; k < 50; k++) {
+    const u = matvec(M, v);
+    v = v.map((_, j) => M.reduce((a, row, i) => a + row[j] * u[i], 0));
+    const n = vnorm(v) || 1;
+    v = v.map(x => x / n);
+  }
+  return vnorm(matvec(M, v));
+}
+
+// --- vocabulary and one-hot inputs ---
+const chars = [...new Set(TEXT)].sort();
+const V = chars.length;
+const onehot = ch => chars.map(c => c === ch ? 1 : 0);
+
+// --- RNN weights (seeded) ---
+const Wxh = mat(H, V, 0.8);                    // input → hidden
+const Whh = mat(H, H, 0.08);                   // hidden → hidden: small init = the villain
+// --- LSTM weights (seeded): each gate reads [x, h] ---
+const Wf = mat(H, V + H, 0.5), Wi = mat(H, V + H, 0.5),
+      Wo = mat(H, V + H, 0.5), Wg = mat(H, V + H, 0.5);
+const FORGET_BIAS = 2.5;                       // classic trick: start by remembering
+
+// --- run BOTH models over the whole string once, recording everything ---
+const steps = [];                              // per-timestep record
+{
+  let h = new Array(H).fill(0);                          // RNN hidden
+  let hl = new Array(H).fill(0), c = new Array(H).fill(0); // LSTM hidden + cell
+  for (let t = 0; t < T; t++) {
+    const x = onehot(TEXT[t]);
+
+    // RNN forward: h = tanh(Wx + Uh + b),  b = 0
+    const z = matvec(Wxh, x).map((a, i) => a + matvec(Whh, h)[i]);
+    h = z.map(Math.tanh);
+    // local backward Jacobian J = diag(1−h²)·U; tanh′ ≤ 1 only shrinks U
+    const J = h.map((hi, i) => Whh[i].map(w => (1 - hi * hi) * w));
+    const facR = spectralNorm(J);
+
+    // LSTM forward
+    const xh = x.concat(hl);
+    const f = matvec(Wf, xh).map(zz => sigmoid(zz + FORGET_BIAS));
+    const ig = matvec(Wi, xh).map(sigmoid);
+    const og = matvec(Wo, xh).map(sigmoid);
+    const g = matvec(Wg, xh).map(Math.tanh);
+    c = c.map((cc, i) => f[i] * cc + ig[i] * g[i]);        // the additive highway
+    hl = og.map((o, i) => o * Math.tanh(c[i]));
+    const facL = Math.max(...f);                           // ‖diag(f)‖₂ = max f
+
+    steps.push({ ch: TEXT[t], x, h: h.slice(), facR,
+                 hl: hl.slice(), c: c.slice(), f, ig, og, facL });
+  }
+  // gradient reaching step t from a loss at the LAST step is the product
+  // of the local factors of every step after t — compute it backwards
+  let pr = 1, pl = 1;
+  for (let t = T - 1; t >= 0; t--) {
+    steps[t].gradR = pr; steps[t].gradL = pl;   // contribution arriving AT step t
+    pr *= steps[t].facR; pl *= steps[t].facL;
+  }
+}
+
+// --- presentation state ---
+let mode = 'rnn';
+let showGrad = false;
+let cur = -1;                                   // last revealed timestep
+let playing = false, lastTick = 0;
+
+const cv = document.getElementById('stage');
+const ctx = cv.getContext('2d');
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const S = hidpi(cv);
+
+const COLW = 82, X0 = 26;
+const GRAD_Y = 96;                              // gradient bars grow up from here
+const CELL_Y = 122;                             // LSTM cell-state bars
+const GATE_Y = 226;                             // LSTM gate dials
+const HID_Y = () => mode === 'lstm' ? 264 : 170; // hidden-state bars
+const OH_Y = () => HID_Y() + H * 11 + 16;       // one-hot strip
+const BARW = 56;
+
+function signedBar(x, y, v, scale, color) {
+  // a horizontal bar: length ∝ |v|, blue for +, red for −
+  const len = Math.min(Math.abs(v) / scale, 1) * (BARW / 2);
+  ctx.fillStyle = v >= 0 ? color : 'rgba(248,113,113,0.85)';
+  ctx.fillRect(v >= 0 ? x + BARW / 2 : x + BARW / 2 - len, y, Math.max(len, 0.5), 8);
+}
+
+function dial(x, y, r, v, color, lab) {
+  // a 0..1 gate drawn as a filling arc
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + v * Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = color; ctx.font = '700 8.5px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(lab, x, y + 3);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, S.w, S.h);
+  // faint grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1;
+  for (let i = 1; i < 12; i++) {
+    ctx.beginPath(); ctx.moveTo(0, i * S.h / 12); ctx.lineTo(S.w, i * S.h / 12); ctx.stroke();
+  }
+
+  const hy = HID_Y(), oy = OH_Y();
+  ctx.font = '700 10.5px sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#5d5d72';
+  ctx.fillText(showGrad ? 'GRADIENT REACHING EACH STEP (LINEAR SCALE)' : '', X0, 38);
+  if (mode === 'lstm') {
+    ctx.fillStyle = '#fbbf24'; ctx.fillText('CELL STATE c (THE HIGHWAY)', X0, CELL_Y - 8);
+    ctx.fillStyle = '#5d5d72'; ctx.fillText('GATES f · i · o', X0, GATE_Y - 14);
+  }
+  ctx.fillStyle = '#5d5d72';
+  ctx.fillText('HIDDEN STATE h', X0, hy - 8);
+  ctx.fillText('INPUT (ONE-HOT)', X0, oy - 6);
+
+  // LSTM cell-state highway: one thick amber line through all revealed cells
+  if (mode === 'lstm' && cur >= 0) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(251,191,36,0.5)'; ctx.shadowBlur = 8;
+    ctx.strokeStyle = 'rgba(251,191,36,0.55)'; ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(X0, CELL_Y + H * 11 / 2);
+    ctx.lineTo(X0 + (cur + 1) * COLW - 16, CELL_Y + H * 11 / 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const hScale = 1.0, cScale = Math.max(...steps.flatMap(s => s.c.map(Math.abs)), 0.5);
+
+  for (let t = 0; t <= cur; t++) {
+    const s = steps[t];
+    const x = X0 + t * COLW;
+    const isCur = t === cur;
+
+    // recurrent arrow h_{t-1} → h_t (the weight reuse made visible)
+    if (t > 0) {
+      ctx.strokeStyle = isCur ? 'rgba(76,201,240,0.8)' : 'rgba(76,201,240,0.25)';
+      ctx.lineWidth = isCur ? 2 : 1.2;
+      const ay = hy + H * 11 / 2;
+      ctx.beginPath(); ctx.moveTo(x - COLW + BARW + 4, ay); ctx.lineTo(x - 4, ay); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - 9, ay - 4); ctx.lineTo(x - 4, ay); ctx.lineTo(x - 9, ay + 4); ctx.stroke();
+    }
+
+    // hidden state: 8 signed bars, genuinely h_t (or LSTM's h_t)
+    const hvec = mode === 'rnn' ? s.h : s.hl;
+    for (let i = 0; i < H; i++)
+      signedBar(x, hy + i * 11, hvec[i], hScale, isCur ? 'rgba(76,201,240,0.95)' : 'rgba(76,140,240,0.7)');
+    if (isCur) {
+      ctx.save(); ctx.shadowColor = 'rgba(76,201,240,0.6)'; ctx.shadowBlur = 10;
+      ctx.strokeStyle = 'rgba(76,201,240,0.7)'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(x - 3, hy - 3, BARW + 6, H * 11 + 3);
+      ctx.restore();
+    }
+
+    // LSTM extras: cell-state bars + gate dials
+    if (mode === 'lstm') {
+      for (let i = 0; i < H; i++)
+        signedBar(x, CELL_Y + i * 11, s.c[i], cScale, 'rgba(251,191,36,0.85)');
+      const mean = v => v.reduce((a, b) => a + b, 0) / v.length;
+      dial(x + 10, GATE_Y + 12, 9, mean(s.f), '#fbbf24', 'f');
+      dial(x + 30, GATE_Y + 12, 9, mean(s.ig), '#4ade80', 'i');
+      dial(x + 50, GATE_Y + 12, 9, mean(s.og), '#4cc9f0', 'o');
+    }
+
+    // one-hot input strip: the active character's cell lights up
+    for (let i = 0; i < V; i++) {
+      ctx.fillStyle = s.x[i] ? 'rgba(76,201,240,0.9)' : 'rgba(255,255,255,0.05)';
+      ctx.fillRect(x + i * 7, oy, 6, 10);
+    }
+    // input arrow up into the cell
+    ctx.strokeStyle = 'rgba(154,154,176,0.4)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x + BARW / 2, oy - 4); ctx.lineTo(x + BARW / 2, hy + H * 11 + 4); ctx.stroke();
+
+    // the character itself
+    ctx.fillStyle = isCur ? '#ecedf2' : '#9a9ab0';
+    ctx.font = '700 15px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    ctx.textAlign = 'center';
+    ctx.fillText(s.ch === ' ' ? '␣' : s.ch, x + BARW / 2, oy + 30);
+
+    // --- gradient flow: how much gradient from the last step reaches step t ---
+    if (showGrad) {
+      const gv = mode === 'rnn' ? s.gradR : s.gradL;
+      const hgt = Math.max(gv * 52, 0.6);                  // LINEAR — vanishing is literal
+      ctx.save();
+      ctx.shadowColor = 'rgba(247,37,133,0.6)'; ctx.shadowBlur = 8;
+      ctx.fillStyle = 'rgba(247,37,133,0.85)';
+      ctx.fillRect(x + BARW / 2 - 9, GRAD_Y - hgt, 18, hgt);
+      ctx.restore();
+      ctx.fillStyle = '#f72585'; ctx.font = '600 9px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+      ctx.textAlign = 'center';
+      ctx.fillText(gv >= 0.01 ? gv.toFixed(2) : gv.toExponential(0), x + BARW / 2, GRAD_Y - hgt - 5);
+    }
+  }
+
+  if (showGrad && cur >= 0) {
+    // backward direction arrow
+    ctx.fillStyle = 'rgba(247,37,133,0.7)'; ctx.font = '600 10.5px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('← blame flows right-to-left from the loss', X0 + (cur + 1) * COLW - 16, 52);
+  }
+
+  updateReadout();
+}
+
+function fmt(v) { return v >= 0.01 ? v.toFixed(3) : v.toExponential(1); }
+
+function updateReadout() {
+  const s = cur >= 0 ? steps[cur] : null;
+  document.getElementById('stepVal').textContent = s ? `${cur} · '${s.ch === ' ' ? '␣' : s.ch}'` : '—';
+  document.getElementById('hVal').textContent = s ? vnorm(mode === 'rnn' ? s.h : s.hl).toFixed(3) : '—';
+  document.getElementById('facVal').textContent = s ? (mode === 'rnn' ? s.facR : s.facL).toFixed(3) : '—';
+  document.getElementById('prodVal').textContent = cur >= 0 ? fmt(mode === 'rnn' ? steps[0].gradR : steps[0].gradL) : '—';
+
+  const ann = document.getElementById('annotation');
+  if (!s) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Ready.</b> One ${mode === 'rnn' ? 'RNN' : 'LSTM'} cell, applied ${T} times with the <i>same</i> weights. Hit <b>Step</b> to feed it one character of "hello world", or <b>Play</b>. Each new column is h<sub>t</sub> ${mode === 'rnn' ? '= tanh(Wx + Uh + b)' : 'and the gated cell state c<sub>t</sub>'} — genuinely computed.`;
+  } else if (showGrad) {
+    ann.style.borderLeftColor = 'var(--magenta)';
+    if (mode === 'rnn') {
+      ann.innerHTML = `<b>Backward through step ${cur}.</b> The local Jacobian ‖diag(1−h²)·U‖ = <b>${s.facR.toFixed(3)}</b> — below 1, because tanh′ ≤ 1 and U is small. Gradient is <i>multiplied</i> by every factor on the way back, so step 0 receives <b>${fmt(steps[0].gradR)}</b> of the loss signal. The early characters have effectively left the training process.`;
+    } else {
+      ann.innerHTML = `<b>Backward along the highway, step ${cur}.</b> ∂c<sub>t</sub>/∂c<sub>t−1</sub> ≈ diag(f): the factor is the forget gate itself, <b>${s.facL.toFixed(3)}</b> — a value the network <i>learns to hold near 1</i>. Step 0 still receives <b>${fmt(steps[0].gradL)}</b>. Compare the RNN's ${fmt(steps[0].gradR)}: that gap is the whole reason LSTMs exist.`;
+    }
+  } else if (mode === 'rnn') {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Step ${cur}: read '${s.ch === ' ' ? 'space' : s.ch}'.</b> The one-hot input mixes with the previous state: h = tanh(Wx + Uh + b), ‖h‖ = ${vnorm(s.h).toFixed(3)}. Everything the network knows about "${TEXT.slice(0, cur + 1)}" is squeezed into these 8 numbers — no other memory exists. Toggle <b>gradient flow</b> to see what that costs.`;
+  } else {
+    const mean = v => v.reduce((a, b) => a + b, 0) / v.length;
+    const f = mean(s.f), i = mean(s.ig), o = mean(s.og);
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>Step ${cur}: read '${s.ch === ' ' ? 'space' : s.ch}'.</b> Forget gate ≈ <b>${f.toFixed(2)}</b>: the cell carries ${(f * 100).toFixed(0)}% of its memory past this step. Input gate ≈ ${i.toFixed(2)} writes ${(i * 100).toFixed(0)}% of the new candidate into c; output gate ≈ ${o.toFixed(2)} decides how much of c shows up in h. The amber bars are c<sub>t</sub> — note it grows <i>additively</i>, never squashed through tanh between steps.`;
+  }
+}
+
+// --- controls ---
+document.getElementById('stepBtn').onclick = () => { if (cur < T - 1) cur++; };
+document.getElementById('resetBtn').onclick = () => { cur = -1; playing = false; playBtn.textContent = '▶ Play'; };
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ Pause' : '▶ Play'; };
+
+const modeSeg = document.getElementById('modeSeg');
+modeSeg.querySelectorAll('button').forEach(b => b.onclick = () => {
+  modeSeg.querySelectorAll('button').forEach(x => x.classList.remove('on'));
+  b.classList.add('on'); mode = b.dataset.mode;
+  document.getElementById('cap').textContent = mode === 'lstm'
+    ? 'amber = cell state c (the gradient highway) · dials = forget / input / output gates · cyan/red = hidden state h'
+    : 'cyan/red bars = hidden state h (blue +, red −) · each column is one timestep of the same cell';
+});
+const gradBtn = document.getElementById('gradBtn');
+gradBtn.onclick = () => {
+  showGrad = !showGrad;
+  gradBtn.classList.toggle('on', showGrad);
+  gradBtn.textContent = 'Gradient flow: ' + (showGrad ? 'on' : 'off');
+  if (showGrad && cur < 0) cur = T - 1;        // nothing to blame yet? reveal the chain
+};
+const speedSlider = document.getElementById('speed');
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = speedSlider.value + ' chars/s';
+
+// --- render loop ---
+function frame(t) {
+  if (playing && t - lastTick > 1000 / parseInt(speedSlider.value)) {
+    lastTick = t;
+    if (cur < T - 1) cur++;
+    else { playing = false; playBtn.textContent = '▶ Play'; }
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

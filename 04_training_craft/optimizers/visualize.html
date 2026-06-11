@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Optimizer Race — SGD vs Momentum vs Adam</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    /* file-specific aliases: the three racers */
+    --sgd: var(--cyan);
+    --mom: var(--amber);
+    --adam: var(--magenta);
+    --good: var(--green);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .subtitle .s { color: var(--sgd); font-weight: 600; } .subtitle .m { color: var(--mom); font-weight: 600; } .subtitle .a { color: var(--adam); font-weight: 600; }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+
+  /* race leaderboard table */
+  .race { font-size: 12.5px; }
+  .race table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; }
+  .race td, .race th { padding: 6px 4px; text-align: left; border-bottom: 1px solid #1f1f2b; }
+  .race th { color: var(--faint); font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .race tr:last-child td { border-bottom: none; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 04 training craft</div>
+<h1>The Optimizer Race</h1>
+<p class="subtitle">Same surface, same start, three strategies. <span class="s">SGD</span> steps straight downhill. <span class="m">Momentum</span> is a heavy ball that builds speed. <span class="a">Adam</span> gives every parameter its own adaptive step. <b>Click anywhere on the loss surface</b> to restart all three from that point — try the flat shelf at the top-left, then the narrow valley.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="surface" width="600" height="450"></canvas>
+    <div class="caption">Color = loss height (dark valley → bright ridge) · ★ global minimum · the dashed ring is a flat saddle shelf, the optimizer trap</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Race</button>
+      <button id="stepBtn">Step ⏭</button>
+      <button id="resetBtn">↺ Restart</button>
+    </div>
+    <div class="card">
+      <div class="slider-row">
+        <label>Learning rate α <span class="val" id="lrVal">0.020</span></label>
+        <input type="range" id="lr" min="-2.6" max="-0.8" step="0.02" value="-1.7">
+      </div>
+      <div class="slider-row" style="margin-top:10px">
+        <label>Speed <span class="val" id="speedVal">20 steps/s</span></label>
+        <input type="range" id="speed" min="2" max="120" step="2" value="20">
+      </div>
+    </div>
+    <div class="card race" id="race"></div>
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// THREE OPTIMIZERS, ONE LOSS SURFACE — every update rule is the
+// real equation from the paper, in 2 dimensions so you can watch.
+//
+// The surface is built to expose each optimizer's character:
+//   * a long, narrow, ROTATED valley  -> SGD zig-zags across it,
+//     momentum glides along it
+//   * a nearly-FLAT shelf             -> gradients are tiny there;
+//     SGD/momentum crawl, Adam's 1/sqrt(v) amplifies the whisper
+//   * the global minimum at the valley's end
+// ============================================================
+
+// --- the loss surface ---
+const COS = Math.cos(0.5), SIN = Math.sin(0.5);
+function loss(x, y) {
+  // rotate coordinates so the valley isn't axis-aligned (real loss
+  // surfaces never are — this is what defeats per-axis intuition)
+  const u = COS * x + SIN * y;
+  const v = -SIN * x + COS * y;
+  // anisotropic bowl: 25x more curvature across the valley than along it
+  const bowl = 0.04 * u * u + 1.0 * v * v;
+  // a flat shelf: a wide plateau where gradients nearly vanish
+  const shelf = 0.55 * Math.exp(-((x + 1.15) ** 2 + (y - 0.85) ** 2) / 0.55);
+  return bowl + shelf;
+}
+
+// numerical gradient — finite differences keep the surface hackable:
+// edit loss() above and the gradients stay correct automatically
+function grad(x, y) {
+  const h = 1e-5;
+  return [
+    (loss(x + h, y) - loss(x - h, y)) / (2 * h),
+    (loss(x, y + h) - loss(x, y - h)) / (2 * h),
+  ];
+}
+
+// global minimum of the bowl (shelf is far away): u=v=0 → origin
+const MIN_X = 0, MIN_Y = 0;
+
+// --- the three update rules ---
+function makeOptimizers(x0, y0) {
+  return [
+    {
+      name: 'SGD', color: '#4cc9f0', x: x0, y: y0, path: [[x0, y0]], done: false,
+      // θ ← θ − α·∇L. That's the whole algorithm.
+      step(a) {
+        const [gx, gy] = grad(this.x, this.y);
+        this.x -= a * gx; this.y -= a * gy;
+      },
+    },
+    {
+      name: 'Momentum', color: '#fbbf24', x: x0, y: y0, path: [[x0, y0]], done: false,
+      vx: 0, vy: 0, beta: 0.9,
+      // v ← βv + ∇L; θ ← θ − αv. Oscillating gradient components cancel
+      // inside v; persistent ones compound up to 1/(1−β) = 10×.
+      step(a) {
+        const [gx, gy] = grad(this.x, this.y);
+        this.vx = this.beta * this.vx + gx;
+        this.vy = this.beta * this.vy + gy;
+        this.x -= a * this.vx; this.y -= a * this.vy;
+      },
+    },
+    {
+      name: 'Adam', color: '#f72585', x: x0, y: y0, path: [[x0, y0]], done: false,
+      mx: 0, my: 0, vx: 0, vy: 0, t: 0, b1: 0.9, b2: 0.999, eps: 1e-8,
+      // m: mean of gradients (momentum); v: mean of SQUARED gradients.
+      // Step = α·m̂/(√v̂+ε): each coordinate normalized by its own typical
+      // gradient size — twitchy directions damped, quiet ones amplified.
+      step(a) {
+        const [gx, gy] = grad(this.x, this.y);
+        this.t++;
+        this.mx = this.b1 * this.mx + (1 - this.b1) * gx;
+        this.my = this.b1 * this.my + (1 - this.b1) * gy;
+        this.vx = this.b2 * this.vx + (1 - this.b2) * gx * gx;
+        this.vy = this.b2 * this.vy + (1 - this.b2) * gy * gy;
+        // bias correction: m,v start at 0, so early estimates are
+        // deflated by (1−βᵗ); divide it back out
+        const mhx = this.mx / (1 - this.b1 ** this.t);
+        const mhy = this.my / (1 - this.b1 ** this.t);
+        const vhx = this.vx / (1 - this.b2 ** this.t);
+        const vhy = this.vy / (1 - this.b2 ** this.t);
+        // Adam's α means "max step size", roughly — give it a fair scale
+        const aa = a * 3;
+        this.x -= aa * mhx / (Math.sqrt(vhx) + this.eps);
+        this.y -= aa * mhy / (Math.sqrt(vhy) + this.eps);
+      },
+    },
+  ];
+}
+
+// --- world <-> pixel mapping ---
+const XMIN = -2.4, XMAX = 2.4, YMIN = -1.8, YMAX = 1.8;
+const canvas = document.getElementById('surface');
+const ctx = canvas.getContext('2d');
+const CW = 600, CH = 450;
+(function hidpi() {
+  const r = window.devicePixelRatio || 1;
+  canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
+  canvas.width = CW * r; canvas.height = CH * r; ctx.scale(r, r);
+})();
+const px = x => (x - XMIN) / (XMAX - XMIN) * CW;
+const py = y => CH - (y - YMIN) / (YMAX - YMIN) * CH;
+
+// --- render the heatmap once to an offscreen canvas ---
+const heat = document.createElement('canvas');
+heat.width = CW; heat.height = CH;
+(function renderHeatmap() {
+  const hctx = heat.getContext('2d');
+  const img = hctx.createImageData(CW, CH);
+  let maxL = 0;
+  for (let j = 0; j < CH; j++) for (let i = 0; i < CW; i++) {
+    const L = loss(XMIN + i / CW * (XMAX - XMIN), YMAX - j / CH * (YMAX - YMIN));
+    if (L > maxL) maxL = L;
+  }
+  for (let j = 0; j < CH; j++) for (let i = 0; i < CW; i++) {
+    const L = loss(XMIN + i / CW * (XMAX - XMIN), YMAX - j / CH * (YMAX - YMIN));
+    let t = Math.sqrt(L / maxL);               // sqrt: more resolution near the valley
+    t = Math.floor(t * 14) / 14;               // quantize → contour bands
+    // dark navy valley → indigo → warm ridge
+    const r = 18 + t * 130, g = 16 + t * 60 + (t > 0.7 ? (t - 0.7) * 220 : 0), b = 26 + t * 150 - (t > 0.7 ? (t - 0.7) * 240 : 0);
+    const k = (j * CW + i) * 4;
+    img.data[k] = r; img.data[k + 1] = g; img.data[k + 2] = b; img.data[k + 3] = 255;
+  }
+  hctx.putImageData(img, 0, 0);
+})();
+
+// --- state ---
+let opts = makeOptimizers(-1.9, 1.45);   // start near the shelf for drama
+let iter = 0;
+let playing = false;
+let lastStep = 0;
+
+const lrSlider = document.getElementById('lr');
+const speedSlider = document.getElementById('speed');
+const alpha = () => Math.pow(10, parseFloat(lrSlider.value));
+lrSlider.oninput = () => document.getElementById('lrVal').textContent = alpha().toFixed(3);
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = speedSlider.value + ' steps/s';
+lrSlider.oninput();
+
+function stepAll() {
+  const a = alpha();
+  for (const o of opts) {
+    if (o.done) continue;
+    o.step(a);
+    // clamp to the world so a divergence doesn't fly off to infinity
+    o.x = Math.max(XMIN, Math.min(XMAX, o.x));
+    o.y = Math.max(YMIN, Math.min(YMAX, o.y));
+    o.path.push([o.x, o.y]);
+    if (Math.hypot(o.x - MIN_X, o.y - MIN_Y) < 0.045) o.done = true;
+  }
+  iter++;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, CW, CH);
+  ctx.drawImage(heat, 0, 0, CW, CH);
+
+  // shelf marker
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(px(-1.15), py(0.85), 42, 0, Math.PI * 2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.font = '10.5px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('flat shelf', px(-1.15), py(0.85) - 48);
+
+  // global minimum
+  ctx.save();
+  ctx.shadowColor = 'rgba(74,222,128,0.8)'; ctx.shadowBlur = 10;
+  ctx.fillStyle = '#4ade80'; ctx.font = '700 15px sans-serif';
+  ctx.fillText('★', px(MIN_X), py(MIN_Y) + 5);
+  ctx.restore();
+
+  // optimizer trails + heads
+  for (const o of opts) {
+    ctx.save();
+    ctx.shadowColor = o.color; ctx.shadowBlur = 6;
+    ctx.strokeStyle = o.color; ctx.lineWidth = 2; ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    o.path.forEach(([x, y], i) => i === 0 ? ctx.moveTo(px(x), py(y)) : ctx.lineTo(px(x), py(y)));
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.shadowColor = o.color; ctx.shadowBlur = 12;
+    ctx.fillStyle = o.color;
+    ctx.beginPath(); ctx.arc(px(o.x), py(o.y), 6, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = '#0b0b10'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px(o.x), py(o.y), 6, 0, Math.PI * 2); ctx.stroke();
+    if (o.done) {
+      ctx.fillStyle = '#4ade80'; ctx.font = '700 10px sans-serif';
+      ctx.fillText('✓', px(o.x), py(o.y) - 10);
+    }
+  }
+
+  updatePanels();
+}
+
+function updatePanels() {
+  const rows = opts.map(o =>
+    `<tr><td><span class="swatch" style="background:${o.color}; box-shadow:0 0 8px ${o.color}"></span>${o.name}</td>` +
+    `<td>${loss(o.x, o.y).toFixed(4)}</td>` +
+    `<td>${o.done ? '<span style="color:var(--good)">✓ ' + (o.path.length - 1) + ' steps</span>' : (o.path.length - 1) + ' steps'}</td></tr>`
+  ).join('');
+  document.getElementById('race').innerHTML =
+    `<div class="chart-label">Leaderboard</div>` +
+    `<table><tr><th>optimizer</th><th>loss</th><th>progress</th></tr>${rows}</table>` +
+    `<div class="hint">iteration ${iter} — ✓ = reached the ★ minimum</div>`;
+
+  const ann = document.getElementById('annotation');
+  const sgd = opts[0], mom = opts[1], adam = opts[2];
+  if (iter === 0) {
+    ann.innerHTML = '<b>Ready.</b> All three start from the same point with the same learning rate. The only difference is the update rule. Hit <b>Race</b> — then click a new start point anywhere, especially inside the dashed shelf.';
+  } else if (!sgd.done && !mom.done && !adam.done && iter < 60) {
+    ann.innerHTML = '<b>Watch the trails:</b> <span style="color:var(--sgd)">SGD</span> zig-zags across the narrow valley because each step points straight downhill — mostly at the opposite wall. <span style="color:var(--mom)">Momentum</span>\'s zig-zags cancel inside its velocity. <span style="color:var(--adam)">Adam</span> normalizes each axis by its gradient history, so it treats the steep and shallow directions equally.';
+  } else if (adam.done && (!sgd.done || !mom.done)) {
+    ann.innerHTML = '<b>Adam arrived first.</b> Its per-parameter scaling turned the ravine back into a round bowl. But note: on this clean surface tuned SGD could match it — Adam\'s real advantage is being <i>robust</i> to the learning rate, not strictly faster. Try cranking α and re-racing.';
+  } else if (sgd.done && mom.done && adam.done) {
+    ann.innerHTML = `<b>All converged.</b> Final step counts — SGD ${sgd.path.length - 1}, Momentum ${mom.path.length - 1}, Adam ${adam.path.length - 1}. Now lower α by 10× and restart from the flat shelf: SGD will barely move (gradient ≈ 0 there), while Adam\'s 1/√v̂ amplifies the whisper of a gradient.`;
+  } else {
+    ann.innerHTML = '<b>Still racing.</b> If someone is stuck on the shelf: gradients there are nearly zero, so SGD\'s steps are nearly zero. Adam divides by √v̂ — the running scale of its own gradients — so tiny-but-consistent gradients still produce full-size steps. That\'s "adaptive" in one sentence.';
+  }
+}
+
+// --- controls ---
+document.getElementById('stepBtn').onclick = () => { stepAll(); draw(); };
+document.getElementById('resetBtn').onclick = () => { restart(opts[0].path[0][0], opts[0].path[0][1]); };
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Race';
+  if (playing) requestAnimationFrame(tick);
+};
+
+function restart(x0, y0) {
+  opts = makeOptimizers(x0, y0);
+  iter = 0;
+  draw();
+}
+
+canvas.addEventListener('click', e => {
+  const r = canvas.getBoundingClientRect();
+  const x = XMIN + (e.clientX - r.left) / CW * (XMAX - XMIN);
+  const y = YMAX - (e.clientY - r.top) / CH * (YMAX - YMIN);
+  restart(x, y);
+  if (!playing) playBtn.click();         // clicking the surface starts the race
+});
+
+function tick(t) {
+  if (!playing) return;
+  const interval = 1000 / parseInt(speedSlider.value);
+  if (t - lastStep > interval) {
+    lastStep = t;
+    stepAll(); draw();
+    if (opts.every(o => o.done) || iter > 3000) { playing = false; playBtn.textContent = '▶ Race'; }
+  }
+  requestAnimationFrame(tick);
+}
+
+draw();
+</script>
+</body>
+</html>

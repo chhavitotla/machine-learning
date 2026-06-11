@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Random Forests — Watch Variance Average Out</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 740px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 01 supervised learning</div>
+<h1>Random Forests</h1>
+<p class="subtitle">Each new tree trains on a <b>bootstrap resample</b> (watch the sampled points flash — bigger ring = drawn more times) with a random feature per split, so every tree overfits <i>differently</i>. Their jagged staircase boundaries stack up as faint white lines; the <b>bold boundary is the majority vote</b>, and it gets smoother and more right as the disagreements cancel.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="560" height="460"></canvas>
+    <div class="caption">faint white = individual trees' cuts · field = vote share · bold white = ensemble majority boundary</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Grow forest</button>
+      <button id="stepBtn">+1 tree</button>
+      <button id="resetBtn">↺ Clear forest</button>
+      <button id="dataBtn">🎲 New data</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Target forest size <span class="val" id="ntVal">30 trees</span></label>
+        <input type="range" id="nTrees" min="1" max="50" step="1" value="30">
+      </div>
+      <div class="slider-row">
+        <label>Max depth per tree <span class="val" id="mdVal">5</span></label>
+        <input type="range" id="maxDepth" min="2" max="8" step="1" value="5">
+      </div>
+      <div class="hint">Grow 1 tree, then 30: one tree's boundary chases the flipped-label noise points; thirty trees' vote walks straight past them. Bagging in one picture.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">trees grown</div><div class="v" style="color:var(--cyan)" id="treesVal">0</div></div>
+        <div class="stat"><div class="k">avg single tree<br>(oob acc)</div><div class="v" style="color:var(--red)" id="singleVal">—</div></div>
+        <div class="stat wide"><div class="k">ensemble out-of-bag accuracy</div><div class="v" style="color:var(--green);font-size:20px" id="oobVal">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">OOB accuracy vs forest size</div>
+      <canvas id="acchart" width="276" height="96"></canvas>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// RANDOM FOREST = BAGGING + FEATURE RANDOMNESS + VOTING
+// Each tree: trained on n points drawn WITH replacement (each
+//   tree sees ~63% of unique points; the rest are "out-of-bag"),
+//   and at every split only ONE randomly chosen feature may be
+//   used — so trees can't all ask the same questions.
+// Prediction: majority vote. Errors that trees DON'T share
+//   cancel; signal they DO share survives. Variance ÷ ~n_trees.
+// OOB accuracy: score each point only with trees that never saw
+//   it — a free, honest test set hiding inside the bootstrap.
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+const accCanvas = document.getElementById('acchart');
+const actx = accCanvas.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+const AC = hidpi(accCanvas);
+const PAD = 40;
+
+// --- seeded PRNG so the dataset is reproducible ---
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let rng = mulberry32(1234);
+const gauss = () => Math.sqrt(-2 * Math.log(rng() + 1e-12)) * Math.cos(2 * Math.PI * rng());
+
+// --- data: two crescents + 8% flipped labels (the noise to be averaged out) ---
+let data = [];
+function makeData(seed) {
+  rng = mulberry32(seed);
+  data = [];
+  for (let i = 0; i < 42; i++) {
+    const a = Math.PI * rng();
+    data.push({ x: Math.cos(a) + gauss() * 0.14, y: Math.sin(a) + gauss() * 0.14, c: 0 });
+    data.push({ x: 1 - Math.cos(a) + gauss() * 0.14, y: 0.45 - Math.sin(a) + gauss() * 0.14, c: 1 });
+  }
+  for (const p of data) {
+    p.x = (p.x + 1.5) / 4.0;
+    p.y = (p.y + 1.0) / 3.0;
+    if (rng() < 0.08) { p.c = 1 - p.c; p.noisy = true; }   // flipped label
+  }
+}
+
+// --- minimal CART (same as ../decision_trees) with one random feature/split ---
+function giniOf(idx) {
+  if (idx.length === 0) return 0;
+  const p1 = idx.filter(i => data[i].c === 1).length / idx.length;
+  return 1 - p1 * p1 - (1 - p1) * (1 - p1);
+}
+const feat = (i, f) => (f === 0 ? data[i].x : data[i].y);
+
+function bestSplit(idx, f) {
+  // scan thresholds on the ONE permitted feature — this restriction is
+  // what stops every tree from making the same first cut
+  const parent = giniOf(idx);
+  let best = null;
+  const vals = [...new Set(idx.map(i => feat(i, f)))].sort((a, b) => a - b);
+  for (let k = 0; k + 1 < vals.length; k++) {
+    const t = (vals[k] + vals[k + 1]) / 2;
+    const L = idx.filter(i => feat(i, f) <= t);
+    const R = idx.filter(i => feat(i, f) > t);
+    const gain = parent - (L.length * giniOf(L) + R.length * giniOf(R)) / idx.length;
+    if (!best || gain > best.gain) best = { f, t, gain, L, R };
+  }
+  return best && best.gain > 1e-12 ? best : null;
+}
+
+function buildTree(idx, depth, maxDepth, region) {
+  const n1 = idx.filter(i => data[i].c === 1).length;
+  const label = 2 * n1 >= idx.length ? 1 : 0;
+  let s = null;
+  if (depth < maxDepth && giniOf(idx) > 0) {
+    s = bestSplit(idx, Math.floor(treeRand() * 2));        // random feature
+    if (!s) s = bestSplit(idx, Math.floor(treeRand() * 2)); // one retry on the other
+  }
+  if (!s) return { leaf: true, label, region };
+  const r = region;
+  return {
+    leaf: false, f: s.f, t: s.t, region,
+    left: buildTree(s.L, depth + 1, maxDepth,
+      s.f === 0 ? { x0: r.x0, x1: s.t, y0: r.y0, y1: r.y1 } : { x0: r.x0, x1: r.x1, y0: r.y0, y1: s.t }),
+    right: buildTree(s.R, depth + 1, maxDepth,
+      s.f === 0 ? { x0: s.t, x1: r.x1, y0: r.y0, y1: r.y1 } : { x0: r.x0, x1: r.x1, y0: s.t, y1: r.y1 }),
+  };
+}
+
+function treePredict(node, x, y) {
+  while (!node.leaf) node = (node.f === 0 ? x : y) <= node.t ? node.left : node.right;
+  return node.label;
+}
+
+// --- the forest ---
+let forest = [];          // { tree, inBagCount: Map, oob: Set }
+let oobHistory = [];
+let playing = false, lastTick = 0, lastFlash = 0;
+let treeRand = Math.random;   // per-tree PRNG for feature choice
+
+function addTree() {
+  // BOOTSTRAP: n draws with replacement → ~63% unique, rest are out-of-bag
+  const n = data.length;
+  const counts = new Map();
+  const bag = [];
+  for (let i = 0; i < n; i++) {
+    const j = Math.floor(Math.random() * n);
+    bag.push(j);
+    counts.set(j, (counts.get(j) || 0) + 1);
+  }
+  const oob = new Set();
+  for (let i = 0; i < n; i++) if (!counts.has(i)) oob.add(i);
+
+  treeRand = Math.random;
+  const tree = buildTree(bag, 0, parseInt(mdSlider.value), { x0: 0, x1: 1, y0: 0, y1: 1 });
+  forest.push({ tree, counts, oob });
+  lastFlash = performance.now();
+  rebuildField();
+  oobHistory.push(oobAccuracy());
+}
+
+// OOB: judge each point only by trees that never trained on it
+function oobAccuracy() {
+  let hits = 0, judged = 0;
+  for (let i = 0; i < data.length; i++) {
+    let v1 = 0, v = 0;
+    for (const t of forest) {
+      if (!t.oob.has(i)) continue;
+      v++;
+      v1 += treePredict(t.tree, data[i].x, data[i].y);
+    }
+    if (v === 0) continue;
+    judged++;
+    if ((2 * v1 >= v ? 1 : 0) === data[i].c) hits++;
+  }
+  return judged ? hits / judged : null;
+}
+
+// average accuracy of each lone tree on its own OOB points — the baseline
+// the ensemble must beat
+function singleTreeAccuracy() {
+  let acc = 0, m = 0;
+  for (const t of forest) {
+    let h = 0;
+    if (t.oob.size === 0) continue;
+    for (const i of t.oob) if (treePredict(t.tree, data[i].x, data[i].y) === data[i].c) h++;
+    acc += h / t.oob.size; m++;
+  }
+  return m ? acc / m : null;
+}
+
+// --- vote field: fraction of trees voting class 1, on a coarse grid ---
+const G = 84;
+let voteGrid = new Float32Array(G * G);
+const heat = document.createElement('canvas');
+heat.width = G; heat.height = G;
+const hctx = heat.getContext('2d');
+const heatImg = hctx.createImageData(G, G);
+
+function rebuildField() {
+  for (let j = 0; j < G; j++) {
+    const y = 1 - j / (G - 1);
+    for (let i = 0; i < G; i++) {
+      const x = i / (G - 1);
+      let v = 0;
+      for (const t of forest) v += treePredict(t.tree, x, y);
+      voteGrid[j * G + i] = forest.length ? v / forest.length : 0.5;
+    }
+  }
+  const d = heatImg.data;
+  for (let k = 0; k < G * G; k++) {
+    const pr = voteGrid[k];
+    const o = k * 4;
+    d[o]     = 76 + (247 - 76) * pr;     // cyan → magenta by vote share
+    d[o + 1] = 201 + (37 - 201) * pr;
+    d[o + 2] = 240 + (133 - 240) * pr;
+    d[o + 3] = 26 + 55 * Math.abs(pr - 0.5) * 2;   // confident = more tint
+  }
+  hctx.putImageData(heatImg, 0, 0);
+}
+
+// --- drawing ---
+const SX = x => PAD + x * (P.w - 2 * PAD);
+const SY = y => P.h - PAD - y * (P.h - 2 * PAD);
+
+function drawTreeCuts(node, alpha) {
+  // one tree's boundary = the union of its split lines (a staircase)
+  if (node.leaf) return;
+  const r = node.region;
+  ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (node.f === 0) { ctx.moveTo(SX(node.t), SY(r.y0)); ctx.lineTo(SX(node.t), SY(r.y1)); }
+  else { ctx.moveTo(SX(r.x0), SY(node.t)); ctx.lineTo(SX(r.x1), SY(node.t)); }
+  ctx.stroke();
+  drawTreeCuts(node.left, alpha);
+  drawTreeCuts(node.right, alpha);
+}
+
+function drawEnsembleBoundary() {
+  // majority flips between adjacent grid cells = the voted boundary
+  if (forest.length === 0) return;
+  const cw = (P.w - 2 * PAD) / (G - 1), ch = (P.h - 2 * PAD) / (G - 1);
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,255,255,0.7)'; ctx.shadowBlur = 9;
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let j = 0; j < G; j++) {
+    for (let i = 0; i < G; i++) {
+      const here = voteGrid[j * G + i] >= 0.5;
+      const px = PAD + i * cw, py = PAD + j * ch;
+      if (i + 1 < G && (voteGrid[j * G + i + 1] >= 0.5) !== here) {
+        ctx.moveTo(px + cw / 2, py - ch / 2); ctx.lineTo(px + cw / 2, py + ch / 2);
+      }
+      if (j + 1 < G && (voteGrid[(j + 1) * G + i] >= 0.5) !== here) {
+        ctx.moveTo(px - cw / 2, py + ch / 2); ctx.lineTo(px + cw / 2, py + ch / 2);
+      }
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, P.w, P.h);
+
+  // vote-share field
+  if (forest.length) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(heat, SX(0), SY(1), SX(1) - SX(0), SY(0) - SY(1));
+    ctx.restore();
+  }
+
+  // faint grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (P.w - 2 * PAD) / 10;
+    const gy = PAD + i * (P.h - 2 * PAD) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, P.h - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(P.w - PAD, gy); ctx.stroke();
+  }
+
+  // every individual tree's staircase, very faint — variance made visible
+  const a = Math.max(0.018, 0.10 / Math.sqrt(forest.length || 1));
+  for (const t of forest) drawTreeCuts(t.tree, a);
+
+  // newest tree highlighted briefly so you can see what it learned
+  const flashAge = (now - lastFlash) / 900;
+  if (forest.length && flashAge < 1) {
+    drawTreeCuts(forest[forest.length - 1].tree, 0.5 * (1 - flashAge));
+  }
+
+  drawEnsembleBoundary();
+
+  // axes
+  ctx.strokeStyle = '#2a2a38'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(PAD, PAD - 10); ctx.lineTo(PAD, P.h - PAD); ctx.lineTo(P.w - PAD + 10, P.h - PAD);
+  ctx.stroke();
+
+  // points; bootstrap flash: ring radius = times drawn into the newest bag
+  const newest = forest[forest.length - 1];
+  for (let i = 0; i < data.length; i++) {
+    const p = data[i];
+    const col = p.c === 1 ? '#f72585' : '#4cc9f0';
+    ctx.save();
+    ctx.shadowColor = col; ctx.shadowBlur = 7;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    if (p.noisy) {   // flipped-label points get a small amber tick
+      ctx.strokeStyle = 'rgba(251,191,36,0.7)'; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), 6.5, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (newest && flashAge < 1) {
+      const c = newest.counts.get(i);
+      if (c) {       // sampled into the current bootstrap — flash, scaled by count
+        ctx.strokeStyle = `rgba(255,255,255,${0.85 * (1 - flashAge)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), 7 + c * 2.2, 0, Math.PI * 2); ctx.stroke();
+      } else {       // out-of-bag: dim it — this tree never saw it
+        ctx.fillStyle = `rgba(11,11,16,${0.55 * (1 - flashAge)})`;
+        ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), 5.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+
+  drawAccChart();
+  updateReadout();
+}
+
+function drawAccChart() {
+  actx.clearRect(0, 0, AC.w, AC.h);
+  actx.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 1; i < 4; i++) {
+    actx.beginPath(); actx.moveTo(0, AC.h * i / 4); actx.lineTo(AC.w, AC.h * i / 4); actx.stroke();
+  }
+  const hist = oobHistory.filter(v => v !== null);
+  if (hist.length < 2) return;
+  // y-axis from 0.5 (coin flip) to 1.0
+  const yOf = v => AC.h - 5 - Math.max(0, (v - 0.5) / 0.5) * (AC.h - 10);
+  actx.strokeStyle = '#4ade80'; actx.lineWidth = 2;
+  actx.beginPath();
+  hist.forEach((v, i) => {
+    const x = (i / (hist.length - 1)) * (AC.w - 6) + 3;
+    i === 0 ? actx.moveTo(x, yOf(v)) : actx.lineTo(x, yOf(v));
+  });
+  actx.stroke();
+}
+
+function updateReadout() {
+  const oob = oobAccuracy();
+  const single = singleTreeAccuracy();
+  document.getElementById('treesVal').textContent = forest.length;
+  document.getElementById('oobVal').textContent = oob === null ? '—' : (oob * 100).toFixed(1) + '%';
+  document.getElementById('singleVal').textContent = single === null ? '—' : (single * 100).toFixed(1) + '%';
+
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = (oob !== null && single !== null && forest.length >= 5 && oob > single)
+    ? `<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ ensemble beats its average member by ${((oob - single) * 100).toFixed(1)} pts</span>`
+    : '';
+
+  const ann = document.getElementById('annotation');
+  if (forest.length === 0) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = '<b>No trees yet.</b> Amber-ringed points carry <i>flipped labels</i> — pure noise a single deep tree will dutifully memorize. Add one tree and watch its staircase boundary bend around them; then grow the forest and watch the vote stop caring.';
+  } else if (forest.length === 1) {
+    ann.style.borderLeftColor = 'var(--red)';
+    ann.innerHTML = `<b>One tree.</b> It trained on a bootstrap (the flashing rings — ring size = times sampled; darkened points were <i>never seen</i> and form its out-of-bag set). Its boundary is jagged and opinionated: classic <b>high variance</b>. OOB accuracy so far: ${oob === null ? '—' : (oob * 100).toFixed(1) + '%'}.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    const diff = oob !== null && single !== null ? ((oob - single) * 100).toFixed(1) : '—';
+    ann.innerHTML = `<b>${forest.length} trees.</b> Each faint staircase is one tree's overfit opinion; they disagree most exactly where the noise is. The bold voted boundary keeps only what the trees <i>agree</i> on — variance averaging out in front of you. Lone tree on its own unseen points: <b style="color:var(--red)">${single === null ? '—' : (single * 100).toFixed(1) + '%'}</b> → ensemble OOB: <b style="color:var(--green)">${oob === null ? '—' : (oob * 100).toFixed(1) + '%'}</b> (+${diff} pts). That gap <i>is</i> bagging.`;
+  }
+}
+
+// --- controls ---
+const ntSlider = document.getElementById('nTrees');
+const mdSlider = document.getElementById('maxDepth');
+ntSlider.oninput = () => document.getElementById('ntVal').textContent = ntSlider.value + ' trees';
+mdSlider.oninput = () => document.getElementById('mdVal').textContent = mdSlider.value;
+ntSlider.oninput(); mdSlider.oninput();
+
+function clearForest() { forest = []; oobHistory = []; rebuildField(); }
+
+document.getElementById('stepBtn').onclick = () => addTree();
+document.getElementById('resetBtn').onclick = () => { clearForest(); stopPlay(); };
+document.getElementById('dataBtn').onclick = () => { makeData(Math.floor(Math.random() * 1e9)); clearForest(); stopPlay(); };
+
+const playBtn = document.getElementById('playBtn');
+function stopPlay() { playing = false; playBtn.textContent = '▶ Grow forest'; }
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Grow forest';
+};
+
+// --- render loop: one new tree every ~700ms while playing ---
+function frame(t) {
+  if (playing && t - lastTick > 700) {
+    lastTick = t;
+    if (forest.length < parseInt(ntSlider.value)) addTree();
+    else stopPlay();
+  }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+
+makeData(1234);
+rebuildField();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

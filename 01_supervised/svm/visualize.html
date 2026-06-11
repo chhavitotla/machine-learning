@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SVM — Watch the Maximum Margin Emerge</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button.toggled {
+    background: linear-gradient(135deg, var(--magenta), #b5179e);
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(247,37,133,0.28);
+  }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 01 supervised learning</div>
+<h1>Support Vector Machine</h1>
+<p class="subtitle">The boundary is hunting for the <b>widest street</b> between the classes. The translucent band is the margin (width 2/‖w‖); points ringed in <b>amber</b> are the support vectors — the only points that matter. <b>Click to add points</b> (toggle which class), then watch the soft margin trade width against violations as you move C.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="500"></canvas>
+    <div class="caption">solid line: w·x+b=0 · dashed: the margin lines w·x+b=±1 · amber rings: support vectors</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="stepBtn">Step ×20</button>
+      <button id="classBtn">✚ adding: cyan</button>
+      <button id="resetBtn">↺ Reset fit</button>
+      <button id="dataBtn">🎲 New data</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Regularization C <span class="val" id="cVal">1.0</span></label>
+        <input type="range" id="cSlider" min="-2" max="2.4" step="0.02" value="0">
+      </div>
+      <div class="slider-row">
+        <label>Speed <span class="val" id="speedVal">12 epochs/s</span></label>
+        <input type="range" id="speed" min="1" max="40" step="1" value="12">
+      </div>
+      <div class="hint">Low C → the L2 term dominates: a <i>wide</i> forgiving street that tolerates violators. High C → violations are expensive: the street narrows to dodge every point. Moving the slider re-trains live.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">‖w‖</div><div class="v" style="color:var(--cyan)" id="normVal">—</div></div>
+        <div class="stat"><div class="k">margin 2/‖w‖</div><div class="v" style="color:var(--magenta)" id="marginVal">—</div></div>
+        <div class="stat"><div class="k">support vectors</div><div class="v" style="color:var(--amber)" id="svVal">—</div></div>
+        <div class="stat"><div class="k">hinge loss</div><div class="v" style="color:var(--green)" id="hingeVal">—</div></div>
+        <div class="stat wide"><div class="k">epoch</div><div class="v" id="epochVal">0</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// LINEAR SOFT-MARGIN SVM VIA PEGASOS (SUBGRADIENT DESCENT)
+// Model:      f(x) = w·x + b,   classify by sign(f(x))
+// Objective:  (λ/2)‖w‖² + (1/n) Σ max(0, 1 − y·f(x))
+//             where λ = 1/(n·C)  — big C means hinge dominates
+// Update:     for each point, step size η = 1/(λt);
+//             always shrink w by ηλw (the regularizer widening the
+//             margin), and if the point violates its margin
+//             (y·f(x) < 1) also pull w toward η·y·x.
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+const PAD = 30;
+
+// --- state: data lives in [0,1]² ---
+let points = [];           // {x, y, label: ±1, born}
+let w = [0, 0], b = 0;     // the true parameters
+let wD = [0, 0], bD = 0;   // displayed (eased) parameters — pure theater
+let t = 0;                 // total subgradient steps (drives the 1/λt schedule)
+let epoch = 0;
+let playing = false;
+let lastTick = 0;
+let addClass = +1;         // which class clicks add
+let rngState = 1234;
+
+// seeded PRNG so "the default set" is the same on every load
+function rnd() { rngState = (rngState * 1103515245 + 12345) & 0x7fffffff; return rngState / 0x7fffffff; }
+function gauss(mu, sd) {
+  const u1 = Math.max(rnd(), 1e-9), u2 = rnd();
+  return mu + sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+function makeData() {
+  points = [];
+  // two blobs, nearly separable — a couple of strays so the soft margin matters
+  for (let i = 0; i < 22; i++) {
+    points.push({ x: clamp01(gauss(0.30, 0.085)), y: clamp01(gauss(0.66, 0.085)), label: +1, born: performance.now() });
+    points.push({ x: clamp01(gauss(0.70, 0.085)), y: clamp01(gauss(0.34, 0.085)), label: -1, born: performance.now() });
+  }
+}
+const clamp01 = v => Math.min(0.97, Math.max(0.03, v));
+
+function resetFit() {
+  w = [0, 0]; b = 0; wD = [0, 0]; bD = 0; t = 0; epoch = 0;
+}
+
+// --- the algorithm ---
+const C = () => Math.pow(10, parseFloat(document.getElementById('cSlider').value));
+const lambda = () => 1 / (points.length * C());   // standard C ↔ λ correspondence
+
+function pegasosEpoch() {
+  // one full shuffled pass over the data
+  const lam = lambda();
+  const idx = points.map((_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  for (const i of idx) {
+    t++;
+    const eta = 1 / (lam * t);            // Pegasos decaying step size
+    const p = points[i];
+    const margin = p.label * (w[0] * p.x + w[1] * p.y + b);
+    // L2 shrink: pulls w toward 0 every step → margin 2/‖w‖ grows
+    w[0] -= eta * lam * w[0];
+    w[1] -= eta * lam * w[1];
+    // hinge subgradient: only margin violators push on the boundary —
+    // this is exactly why only support vectors matter
+    if (margin < 1) {
+      w[0] += eta * p.label * p.x;
+      w[1] += eta * p.label * p.y;
+      b    += eta * p.label;
+    }
+  }
+  epoch++;
+}
+
+// metrics, all genuinely computed from the current w, b
+function metrics() {
+  const norm = Math.hypot(w[0], w[1]);
+  let hinge = 0, sv = 0;
+  for (const p of points) {
+    const m = p.label * (w[0] * p.x + w[1] * p.y + b);
+    hinge += Math.max(0, 1 - m);
+    if (m <= 1 + 1e-6) sv++;              // on or inside the margin
+  }
+  return { norm, margin: norm > 1e-9 ? 2 / norm : Infinity, hinge: hinge / points.length, sv };
+}
+
+// --- mapping ---
+const X = x => PAD + x * (P.w - 2 * PAD);
+const Y = y => P.h - PAD - y * (P.h - 2 * PAD);
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (P.w - 2 * PAD) / 10;
+    const gy = PAD + i * (P.h - 2 * PAD) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, P.h - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(P.w - PAD, gy); ctx.stroke();
+  }
+}
+
+// Given parameters (wv, bv) and a level c, clip the line wv·x + bv = c
+// to the unit square and return [[x1,y1],[x2,y2]] in data space, or null.
+function levelSegment(wv, bv, c) {
+  const pts = [];
+  const [a, d] = wv;
+  // intersect with x=0, x=1, y=0, y=1
+  if (Math.abs(d) > 1e-12) {
+    for (const x of [0, 1]) { const y = (c - bv - a * x) / d; if (y >= -0.001 && y <= 1.001) pts.push([x, y]); }
+  }
+  if (Math.abs(a) > 1e-12) {
+    for (const y of [0, 1]) { const x = (c - bv - d * y) / a; if (x > 0.001 && x < 0.999) pts.push([x, y]); }
+  }
+  return pts.length >= 2 ? [pts[0], pts[1]] : null;
+}
+
+function draw(now) {
+  // ease displayed parameters toward the truth
+  wD[0] += (w[0] - wD[0]) * 0.25; wD[1] += (w[1] - wD[1]) * 0.25; bD += (b - bD) * 0.25;
+
+  ctx.clearRect(0, 0, P.w, P.h);
+  drawGrid();
+
+  const normD = Math.hypot(wD[0], wD[1]);
+  const segMid = levelSegment(wD, bD, 0);
+  const segPos = levelSegment(wD, bD, +1);
+  const segNeg = levelSegment(wD, bD, -1);
+
+  // ---- the margin band: a translucent gradient fill between w·x+b=±1 ----
+  if (segPos && segNeg && normD > 1e-6) {
+    const [p1, p2] = segPos, [n1, n2] = segNeg;
+    // order the quad so it doesn't bowtie: pair endpoints by distance
+    const quad = (Math.hypot(p1[0]-n1[0], p1[1]-n1[1]) + Math.hypot(p2[0]-n2[0], p2[1]-n2[1]) <
+                  Math.hypot(p1[0]-n2[0], p1[1]-n2[1]) + Math.hypot(p2[0]-n1[0], p2[1]-n1[1]))
+      ? [p1, p2, n2, n1] : [p1, p2, n1, n2];
+    // gradient runs across the street, cyan side → magenta side
+    const ux = wD[0] / normD, uy = wD[1] / normD;          // unit normal in data space
+    const mid = segMid || [[0.5, 0.5], [0.5, 0.5]];
+    const cx = (mid[0][0] + mid[1][0]) / 2, cy = (mid[0][1] + mid[1][1]) / 2;
+    const half = 1 / normD;                                 // half-width in data units
+    const g = ctx.createLinearGradient(
+      X(cx + ux * half), Y(cy + uy * half),
+      X(cx - ux * half), Y(cy - uy * half));
+    g.addColorStop(0,   'rgba(76,201,240,0.16)');
+    g.addColorStop(0.5, 'rgba(140,120,240,0.05)');
+    g.addColorStop(1,   'rgba(247,37,133,0.16)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(X(quad[0][0]), Y(quad[0][1]));
+    for (let i = 1; i < 4; i++) ctx.lineTo(X(quad[i][0]), Y(quad[i][1]));
+    ctx.closePath(); ctx.fill();
+  }
+
+  // margin lines, dashed
+  ctx.setLineDash([7, 6]); ctx.lineWidth = 1.4;
+  for (const [seg, col] of [[segPos, 'rgba(76,201,240,0.55)'], [segNeg, 'rgba(247,37,133,0.55)']]) {
+    if (!seg) continue;
+    ctx.strokeStyle = col;
+    ctx.beginPath(); ctx.moveTo(X(seg[0][0]), Y(seg[0][1])); ctx.lineTo(X(seg[1][0]), Y(seg[1][1])); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // the decision boundary, glowing
+  if (segMid) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(236,237,242,0.5)'; ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#ecedf2'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(X(segMid[0][0]), Y(segMid[0][1])); ctx.lineTo(X(segMid[1][0]), Y(segMid[1][1])); ctx.stroke();
+    ctx.restore();
+  }
+
+  // points: support vectors ringed amber & full brightness, others dimmed
+  for (const p of points) {
+    const m = p.label * (w[0] * p.x + w[1] * p.y + b);
+    const isSV = epoch > 0 && m <= 1 + 1e-6;
+    const age = Math.min((now - (p.born || 0)) / 300, 1);
+    const rad = 5 * (0.4 + 0.6 * age);
+    const col = p.label > 0 ? '76,201,240' : '247,37,133';
+    ctx.save();
+    if (isSV) { ctx.shadowColor = `rgba(${col},0.9)`; ctx.shadowBlur = 10; }
+    ctx.fillStyle = `rgba(${col},${isSV || epoch === 0 ? 1 : 0.32})`;
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rad, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    if (isSV) {
+      ctx.strokeStyle = 'rgba(251,191,36,0.95)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), rad + 3.5, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  updateReadout();
+}
+
+function updateReadout() {
+  const M = metrics();
+  document.getElementById('normVal').textContent = epoch ? M.norm.toFixed(3) : '—';
+  document.getElementById('marginVal').textContent = epoch && isFinite(M.margin) ? M.margin.toFixed(3) : '—';
+  document.getElementById('svVal').textContent = epoch ? `${M.sv} / ${points.length}` : '—';
+  document.getElementById('hingeVal').textContent = epoch ? M.hinge.toFixed(4) : '—';
+  document.getElementById('epochVal').textContent = epoch;
+
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = (epoch > 0 && M.hinge < 1e-4)
+    ? '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ all points clear the margin — hinge loss = 0</span>'
+    : '';
+
+  const ann = document.getElementById('annotation');
+  if (epoch === 0) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = '<b>Ready.</b> Hit <b>Step ×20</b> for twenty Pegasos epochs or <b>Play</b> to train continuously. The objective: maximize street width 2/‖w‖ while paying C for every point inside the street.';
+  } else {
+    ann.style.borderLeftColor = 'var(--amber)';
+    const cv = C();
+    const mood = cv < 0.3
+      ? 'C is small, so the L2 term dominates: the street is <b>wide</b> and several points are tolerated inside it.'
+      : cv > 30
+        ? 'C is large, so violations are nearly forbidden: the street <b>narrows</b> to dodge every point — overfit territory.'
+        : 'C is moderate: the optimizer is balancing street width against the violators it must pay for.';
+    ann.innerHTML = `<b>Epoch ${epoch}.</b> ‖w‖ = ${M.norm.toFixed(3)}, so the street is ${isFinite(M.margin) ? M.margin.toFixed(3) : '∞'} wide. <b>${M.sv} support vectors</b> (amber rings) sit on or inside it — they alone define the boundary; the dimmed points contribute zero gradient. ${mood}`;
+  }
+}
+
+// --- controls ---
+const speedSlider = document.getElementById('speed');
+const cSlider = document.getElementById('cSlider');
+cSlider.oninput = () => {
+  const c = C();
+  document.getElementById('cVal').textContent = c < 1 ? c.toFixed(2) : c.toFixed(1);
+  // re-train live: the λ schedule changed, so restart the count
+  resetFit();
+  for (let i = 0; i < 60; i++) pegasosEpoch();   // quick burn-in so the change is visible immediately
+};
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = speedSlider.value + ' epochs/s';
+document.getElementById('cVal').textContent = '1.0';
+speedSlider.oninput();
+
+document.getElementById('stepBtn').onclick = () => { for (let i = 0; i < 20; i++) pegasosEpoch(); };
+document.getElementById('resetBtn').onclick = () => resetFit();
+document.getElementById('dataBtn').onclick = () => { rngState = (Date.now() & 0xffff) | 1; makeData(); resetFit(); };
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ Pause' : '▶ Play'; };
+
+const classBtn = document.getElementById('classBtn');
+classBtn.onclick = () => {
+  addClass = -addClass;
+  classBtn.textContent = addClass > 0 ? '✚ adding: cyan' : '✚ adding: magenta';
+  classBtn.classList.toggle('toggled', addClass < 0);
+};
+
+plot.addEventListener('click', e => {
+  const r = plot.getBoundingClientRect();
+  const ux = Math.min(1, Math.max(0, (e.clientX - r.left - PAD) / (P.w - 2 * PAD)));
+  const uy = Math.min(1, Math.max(0, 1 - (e.clientY - r.top - PAD) / (P.h - 2 * PAD)));
+  points.push({ x: ux, y: uy, label: addClass, born: performance.now() });
+});
+
+// --- render loop ---
+function frame(t_) {
+  if (playing && t_ - lastTick > 1000 / parseInt(speedSlider.value)) {
+    lastTick = t_;
+    pegasosEpoch();
+  }
+  draw(t_);
+  requestAnimationFrame(frame);
+}
+
+makeData(); resetFit();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

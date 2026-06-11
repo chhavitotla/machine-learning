@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gradient Boosting — Watch Weak Trees Add Up</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  .panel-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin: 4px 0 2px 4px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 01 supervised learning</div>
+<h1>Gradient Boosting</h1>
+<p class="subtitle">One weak tree can only draw a step. But fit each new tree to <b>whatever error is left</b>, add it shrunk by ν, and the steps stack into the wave. Watch the residuals (middle panel) collapse toward zero — then push rounds and ν too far and watch the <b>holdout error turn back up</b>: the ensemble starts memorizing noise.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <div class="panel-label">① data + ensemble prediction F<sub>m</sub>(x)</div>
+    <canvas id="fitPanel" width="580" height="240"></canvas>
+    <div class="panel-label">② current residuals y − F<sub>m</sub>(x) — the next tree's target</div>
+    <canvas id="resPanel" width="580" height="140"></canvas>
+    <div class="panel-label">③ what the newest tree just contributed: ν·h<sub>m</sub>(x)</div>
+    <canvas id="treePanel" width="580" height="120"></canvas>
+    <div class="caption">cyan dots: train · hollow dots: holdout · magenta curve: the growing ensemble</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play</button>
+      <button id="stepBtn">+ Add tree</button>
+      <button id="resetBtn">↺ Reset</button>
+      <button id="dataBtn">🎲 New noise</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Learning rate ν <span class="val" id="nuVal">0.30</span></label>
+        <input type="range" id="nu" min="0.05" max="1" step="0.05" value="0.3">
+      </div>
+      <div class="slider-row">
+        <label>Max rounds (play stops here) <span class="val" id="maxVal">60</span></label>
+        <input type="range" id="maxRounds" min="5" max="300" step="5" value="60">
+      </div>
+      <div class="slider-row">
+        <label>Tree depth <span class="val" id="depthVal">2</span></label>
+        <input type="range" id="depth" min="1" max="2" step="1" value="2">
+      </div>
+      <div class="hint">Changing ν or depth <i>re-runs the whole sequence</i> with the same data — compare ν=1.0 (greedy, overfits fast) against ν=0.1 (slow, generalizes). Shrinkage is regularization.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">round m</div><div class="v" id="roundVal">0</div></div>
+        <div class="stat"><div class="k">ν · trees</div><div class="v" style="color:var(--cyan)" id="nuTrees">—</div></div>
+        <div class="stat"><div class="k">train MSE</div><div class="v" style="color:var(--green)" id="trainVal">—</div></div>
+        <div class="stat"><div class="k">holdout MSE</div><div class="v" style="color:var(--amber)" id="testVal">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">train (green) vs holdout (amber) MSE by round</div>
+      <canvas id="errChart" width="276" height="110"></canvas>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// GRADIENT BOOSTING FOR 1D REGRESSION
+// F_0(x) = mean(y)
+// round m:  r_i = y_i − F_{m−1}(x_i)     residuals = −gradient of ½MSE
+//           h_m = small regression tree fit to (x, r)
+//           F_m = F_{m−1} + ν·h_m        shrink by learning rate ν
+// Every panel below is computed from this loop — nothing is faked.
+// ============================================================
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const fitC = document.getElementById('fitPanel'), fitX = fitC.getContext('2d'), FP = hidpi(fitC);
+const resC = document.getElementById('resPanel'), resX = resC.getContext('2d'), RP = hidpi(resC);
+const treeC = document.getElementById('treePanel'), treeX = treeC.getContext('2d'), TP = hidpi(treeC);
+const errC = document.getElementById('errChart'), errX = errC.getContext('2d'), EC = hidpi(errC);
+const PAD = 26;
+
+// --- seeded data: noisy wave, train + holdout drawn from the same truth ---
+let rngState = 20240601;
+function rnd() { rngState = (rngState * 1103515245 + 12345) & 0x7fffffff; return rngState / 0x7fffffff; }
+function gauss(sd) {
+  const u1 = Math.max(rnd(), 1e-9), u2 = rnd();
+  return sd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+const truth = x => 0.5 + 0.28 * Math.sin(2 * Math.PI * 1.15 * x) + 0.12 * (x - 0.5);
+const NOISE = 0.07;
+
+let train = [], hold = [];
+function makeData() {
+  train = []; hold = [];
+  for (let i = 0; i < 64; i++) {
+    const x = rnd();
+    train.push({ x, y: truth(x) + gauss(NOISE) });
+  }
+  for (let i = 0; i < 64; i++) {
+    const x = rnd();
+    hold.push({ x, y: truth(x) + gauss(NOISE) });
+  }
+  train.sort((a, b) => a.x - b.x);
+}
+
+// --- the weak learner: a tiny regression tree on (x, residual) ---
+// Returned as a flat list of {lo, hi, value} intervals — a staircase.
+function fitTree(pts, residuals, maxDepth, lo = 0, hi = 1, depth = 0) {
+  const idx = pts.map((p, i) => i).filter(i => pts[i].x >= lo && pts[i].x < hi);
+  if (idx.length === 0) return [{ lo, hi, value: 0 }];
+  const mean = idx.reduce((s, i) => s + residuals[i], 0) / idx.length;
+  if (depth >= maxDepth || idx.length < 4) return [{ lo, hi, value: mean }];
+
+  // scan every split point for the one minimizing total squared error
+  const ord = idx.slice().sort((a, b) => pts[a].x - pts[b].x);
+  let total = 0, sqTotal = 0;
+  for (const i of ord) { total += residuals[i]; sqTotal += residuals[i] ** 2; }
+  let best = { sse: Infinity, thr: null };
+  let ls = 0, lq = 0;
+  for (let k = 0; k < ord.length - 1; k++) {
+    const r = residuals[ord[k]];
+    ls += r; lq += r * r;
+    if (pts[ord[k]].x === pts[ord[k + 1]].x) continue;
+    const nl = k + 1, nr = ord.length - k - 1;
+    // leaf SSE when predicting the leaf mean = Σr² − (Σr)²/n
+    const sse = (lq - ls * ls / nl) + ((sqTotal - lq) - (total - ls) ** 2 / nr);
+    if (sse < best.sse) best = { sse, thr: (pts[ord[k]].x + pts[ord[k + 1]].x) / 2 };
+  }
+  if (best.thr === null) return [{ lo, hi, value: mean }];
+  return [
+    ...fitTree(pts, residuals, maxDepth, lo, best.thr, depth + 1),
+    ...fitTree(pts, residuals, maxDepth, best.thr, hi, depth + 1),
+  ];
+}
+function treeEval(tree, x) {
+  for (const leaf of tree) if (x >= leaf.lo && x < leaf.hi) return leaf.value;
+  return tree[tree.length - 1].value;
+}
+
+// --- ensemble state ---
+let f0 = 0, trees = [], errHist = [];   // errHist: [{train, test}]
+let lastFocus = null;                   // x where residuals were largest before last tree
+const nu = () => parseFloat(document.getElementById('nu').value);
+const maxDepth = () => parseInt(document.getElementById('depth').value);
+
+function predict(x) {
+  let f = f0;
+  for (const t of trees) f += nu() * treeEval(t, x);
+  return f;
+}
+function mse(set) {
+  return set.reduce((s, p) => s + (p.y - predict(p.x)) ** 2, 0) / set.length;
+}
+function residualsNow() { return train.map(p => p.y - predict(p.x)); }
+
+function resetEnsemble() {
+  f0 = train.reduce((s, p) => s + p.y, 0) / train.length;
+  trees = []; errHist = [{ train: mse(train), test: mse(hold) }];
+  lastFocus = null;
+}
+
+function addTree() {
+  const r = residualsNow();
+  // note where the biggest leftover error lives — the annotation narrates this
+  let big = 0;
+  for (let i = 1; i < r.length; i++) if (Math.abs(r[i]) > Math.abs(r[big])) big = i;
+  lastFocus = train[big].x;
+  trees.push(fitTree(train, r, maxDepth()));
+  errHist.push({ train: mse(train), test: mse(hold) });
+}
+
+// re-run the entire sequence (same data) — used when ν or depth changes
+function retrain(rounds) {
+  resetEnsemble();
+  for (let i = 0; i < rounds; i++) addTree();
+}
+
+// --- drawing helpers ---
+const XF = (x, W) => PAD + x * (W - 2 * PAD);
+
+function grid(g, W, H) {
+  g.strokeStyle = 'rgba(255,255,255,0.035)'; g.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (W - 2 * PAD) / 10;
+    g.beginPath(); g.moveTo(gx, 6); g.lineTo(gx, H - 6); g.stroke();
+  }
+  for (let i = 1; i < 4; i++) {
+    g.beginPath(); g.moveTo(PAD, H * i / 4); g.lineTo(W - PAD, H * i / 4); g.stroke();
+  }
+}
+
+function drawFit() {
+  fitX.clearRect(0, 0, FP.w, FP.h);
+  grid(fitX, FP.w, FP.h);
+  const Y = y => FP.h - 14 - Math.min(1, Math.max(0, y)) * (FP.h - 28);
+
+  // holdout: hollow dots
+  fitX.strokeStyle = 'rgba(154,154,176,0.5)'; fitX.lineWidth = 1.2;
+  for (const p of hold) { fitX.beginPath(); fitX.arc(XF(p.x, FP.w), Y(p.y), 3, 0, Math.PI * 2); fitX.stroke(); }
+  // train: glowing cyan dots
+  for (const p of train) {
+    fitX.save(); fitX.shadowColor = 'rgba(76,201,240,0.7)'; fitX.shadowBlur = 6;
+    fitX.fillStyle = '#4cc9f0';
+    fitX.beginPath(); fitX.arc(XF(p.x, FP.w), Y(p.y), 3.4, 0, Math.PI * 2); fitX.fill();
+    fitX.restore();
+  }
+  // the ensemble prediction — a staircase that sharpens into the wave
+  fitX.save();
+  fitX.shadowColor = 'rgba(247,37,133,0.55)'; fitX.shadowBlur = 10;
+  fitX.strokeStyle = '#f72585'; fitX.lineWidth = 2.4;
+  fitX.beginPath();
+  for (let i = 0; i <= 300; i++) {
+    const x = i / 300, y = Y(predict(x));
+    i === 0 ? fitX.moveTo(XF(x, FP.w), y) : fitX.lineTo(XF(x, FP.w), y);
+  }
+  fitX.stroke();
+  fitX.restore();
+}
+
+function drawResiduals() {
+  resX.clearRect(0, 0, RP.w, RP.h);
+  grid(resX, RP.w, RP.h);
+  const mid = RP.h / 2, scale = (RP.h / 2 - 12) / 0.45;   // fixed scale so the collapse is visible
+  resX.strokeStyle = 'rgba(255,255,255,0.18)';
+  resX.beginPath(); resX.moveTo(PAD, mid); resX.lineTo(RP.w - PAD, mid); resX.stroke();
+  const r = residualsNow();
+  for (let i = 0; i < train.length; i++) {
+    const x = XF(train[i].x, RP.w), y = mid - r[i] * scale;
+    // stem from zero — the visual mass of these stems IS the remaining error
+    resX.strokeStyle = 'rgba(251,191,36,0.45)'; resX.lineWidth = 1.5;
+    resX.beginPath(); resX.moveTo(x, mid); resX.lineTo(x, y); resX.stroke();
+    resX.save(); resX.shadowColor = 'rgba(251,191,36,0.7)'; resX.shadowBlur = 5;
+    resX.fillStyle = '#fbbf24';
+    resX.beginPath(); resX.arc(x, y, 2.6, 0, Math.PI * 2); resX.fill();
+    resX.restore();
+  }
+  // highlight where the next tree will aim
+  if (lastFocus !== null) {
+    resX.fillStyle = 'rgba(74,222,128,0.8)'; resX.font = '600 10px sans-serif'; resX.textAlign = 'center';
+    resX.fillText('last tree aimed here', XF(lastFocus, RP.w), 12);
+  }
+}
+
+function drawTreePanel() {
+  treeX.clearRect(0, 0, TP.w, TP.h);
+  grid(treeX, TP.w, TP.h);
+  const mid = TP.h / 2, scale = (TP.h / 2 - 10) / 0.45;
+  treeX.strokeStyle = 'rgba(255,255,255,0.18)';
+  treeX.beginPath(); treeX.moveTo(PAD, mid); treeX.lineTo(TP.w - PAD, mid); treeX.stroke();
+  if (trees.length === 0) {
+    treeX.fillStyle = '#5d5d72'; treeX.font = '11px sans-serif'; treeX.textAlign = 'center';
+    treeX.fillText('add a tree to see its contribution', TP.w / 2, mid - 8);
+    return;
+  }
+  // the newest stump's staircase, scaled by ν — what just got added to F
+  const t = trees[trees.length - 1];
+  treeX.save();
+  treeX.shadowColor = 'rgba(74,222,128,0.6)'; treeX.shadowBlur = 8;
+  treeX.strokeStyle = '#4ade80'; treeX.lineWidth = 2.2;
+  treeX.beginPath();
+  for (const leaf of t) {
+    const y = mid - nu() * leaf.value * scale;
+    treeX.moveTo(XF(Math.max(0, leaf.lo), TP.w), y);
+    treeX.lineTo(XF(Math.min(1, leaf.hi), TP.w), y);
+  }
+  treeX.stroke();
+  treeX.restore();
+}
+
+function drawErrChart() {
+  errX.clearRect(0, 0, EC.w, EC.h);
+  errX.strokeStyle = 'rgba(255,255,255,0.05)';
+  for (let i = 1; i < 4; i++) { errX.beginPath(); errX.moveTo(0, EC.h * i / 4); errX.lineTo(EC.w, EC.h * i / 4); errX.stroke(); }
+  if (errHist.length < 2) return;
+  const maxE = Math.max(errHist[0].train, errHist[0].test);
+  const line = (key, color) => {
+    errX.strokeStyle = color; errX.lineWidth = 2;
+    errX.beginPath();
+    errHist.forEach((e, i) => {
+      const x = (i / (errHist.length - 1)) * (EC.w - 6) + 3;
+      const y = EC.h - 5 - Math.min(e[key] / maxE, 1) * (EC.h - 10);
+      i === 0 ? errX.moveTo(x, y) : errX.lineTo(x, y);
+    });
+    errX.stroke();
+  };
+  line('train', '#4ade80');
+  line('test', '#fbbf24');
+}
+
+function updateReadout() {
+  const last = errHist[errHist.length - 1];
+  document.getElementById('roundVal').textContent = trees.length;
+  document.getElementById('nuTrees').textContent = trees.length ? `${nu().toFixed(2)} × ${trees.length}` : '—';
+  document.getElementById('trainVal').textContent = last.train.toFixed(5);
+  document.getElementById('testVal').textContent = last.test.toFixed(5);
+
+  // detect overfitting: holdout error meaningfully above its own minimum
+  const minTest = Math.min(...errHist.map(e => e.test));
+  const overfit = trees.length > 5 && last.test > minTest * 1.15;
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = overfit
+    ? '<span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red)">⚠ overfitting — holdout error rising while train falls</span>'
+    : (trees.length > 3 && last.test <= minTest * 1.02
+      ? '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ holdout error still improving</span>' : '');
+
+  const ann = document.getElementById('annotation');
+  if (trees.length === 0) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Round 0.</b> The ensemble is just the mean, F₀ = ${f0.toFixed(3)} — a flat line. Every amber stem in panel ② is error the trees must still explain. Hit <b>+ Add tree</b>.`;
+  } else if (overfit) {
+    ann.style.borderLeftColor = 'var(--red)';
+    ann.innerHTML = `<b>Round ${trees.length}.</b> Train MSE keeps falling (${last.train.toFixed(5)}) but holdout bottomed out at ${minTest.toFixed(5)} and is now ${last.test.toFixed(5)} — the new trees are fitting <b>noise</b>, not signal. Fewer rounds or smaller ν would have stopped here. This is why boosting libraries have early stopping.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Round ${trees.length}:</b> the new tree fixes the region around <b>x ≈ ${lastFocus.toFixed(2)}</b> where residuals were largest, contributing the green staircase in panel ③ (shrunk by ν=${nu().toFixed(2)}). Train MSE ${last.train.toFixed(5)}, holdout ${last.test.toFixed(5)}.`;
+  }
+}
+
+// --- controls ---
+let playing = false, lastTick = 0;
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => { playing = !playing; playBtn.textContent = playing ? '⏸ Pause' : '▶ Play'; };
+document.getElementById('stepBtn').onclick = () => addTree();
+document.getElementById('resetBtn').onclick = () => resetEnsemble();
+document.getElementById('dataBtn').onclick = () => { rngState = (Date.now() & 0xfffff) | 1; makeData(); resetEnsemble(); };
+
+document.getElementById('nu').oninput = function () {
+  document.getElementById('nuVal').textContent = nu().toFixed(2);
+  retrain(trees.length);          // same number of rounds, new shrinkage — fair comparison
+};
+document.getElementById('depth').oninput = function () {
+  document.getElementById('depthVal').textContent = this.value;
+  retrain(trees.length);
+};
+document.getElementById('maxRounds').oninput = function () {
+  document.getElementById('maxVal').textContent = this.value;
+};
+
+// --- render loop: 6 trees/sec while playing, stop at max rounds ---
+function frame(t) {
+  const maxR = parseInt(document.getElementById('maxRounds').value);
+  if (playing && t - lastTick > 160) {
+    lastTick = t;
+    if (trees.length < maxR) addTree();
+    else { playing = false; playBtn.textContent = '▶ Play'; }
+  }
+  drawFit(); drawResiduals(); drawTreePanel(); drawErrChart(); updateReadout();
+  requestAnimationFrame(frame);
+}
+
+makeData(); resetEnsemble();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

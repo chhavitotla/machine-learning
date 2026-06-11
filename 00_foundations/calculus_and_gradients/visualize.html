@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calculus &amp; Gradients — Slopes, Tangents, and Walking Downhill</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 00 foundations</div>
+<h1>Calculus &amp; Gradients</h1>
+<p class="subtitle">The derivative is the slope under your feet; gradient descent is "feel the slope, step the other way, repeat." <b>Drag the cyan point</b> along the curve to read its tangent. Shrink <b>h</b> to watch the amber secant collapse onto the tangent. Then <b>drop the ball</b> and let it walk downhill — and crank α until it overshoots.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="480"></canvas>
+    <div class="caption">drag the cyan point · amber = secant through x and x+h · magenta = tangent · white ball = gradient descent</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls" style="gap:6px">
+      <button id="fParab" class="primary">Parabola</button>
+      <button id="fCubic">Cubic</button>
+      <button id="fSinq">Sin + quadratic</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>secant gap h <span class="val" id="hVal">1.00</span></label>
+        <input type="range" id="h" min="-3" max="0.3" step="0.01" value="0">
+      </div>
+      <div class="slider-row">
+        <label>learning rate α <span class="val" id="alphaVal">0.20</span></label>
+        <input type="range" id="alpha" min="0.01" max="2.2" step="0.01" value="0.2">
+      </div>
+      <div class="hint">As h → 0 the secant slope (f(x+h) − f(x)) / h converges to the tangent slope. That limit <i>is</i> the derivative.</div>
+    </div>
+
+    <div class="card controls">
+      <button class="primary" id="dropBtn">● Drop ball</button>
+      <button id="stepBtn">Step</button>
+      <button id="playBtn">▶ Play</button>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">x</div><div class="v" id="xVal">—</div></div>
+        <div class="stat"><div class="k">f(x)</div><div class="v" id="fxVal">—</div></div>
+        <div class="stat"><div class="k">secant slope</div><div class="v" style="color:var(--amber)" id="secVal">—</div></div>
+        <div class="stat"><div class="k">f′(x) tangent</div><div class="v" style="color:var(--magenta)" id="dfVal">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// CALCULUS & GRADIENTS
+// Derivative: f'(x) = lim_{h→0} (f(x+h) - f(x)) / h
+//   shown as a secant line whose gap h you control.
+// Internally f'(x) is computed by CENTRAL difference with tiny h,
+//   (f(x+h) - f(x-h)) / 2h, accurate to O(h²) — no symbolic math.
+// Gradient descent: x ← x - α·f'(x), one step per click/tick.
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+const PAD = 40;
+const XMIN = -4, XMAX = 4;
+
+// --- the three functions on offer ---
+const FUNCS = {
+  parab: { f: x => 0.35 * (x - 0.5) ** 2 - 1, name: 'f(x) = 0.35(x−0.5)² − 1',
+           blurb: 'one perfect bowl — descent from anywhere finds the bottom' },
+  cubic: { f: x => 0.12 * x ** 3 - 0.7 * x + 0.4, name: 'f(x) = 0.12x³ − 0.7x + 0.4',
+           blurb: 'a local max AND a local min — and a cliff off to the left' },
+  sinq:  { f: x => 0.18 * x * x + Math.sin(2 * x), name: 'f(x) = 0.18x² + sin(2x)',
+           blurb: 'several valleys — descent keeps whichever one it falls into' },
+};
+let fkey = 'parab';
+const f = x => FUNCS[fkey].f(x);
+
+// derivative by central difference: symmetric secant, error O(h²)
+const dfdx = x => (f(x + 1e-5) - f(x - 1e-5)) / 2e-5;
+
+// --- state ---
+let x0 = -2.2;                     // the draggable probe point
+let ball = null;                   // { x, steps, prevStep, history[] }
+let playing = false, lastTick = 0, dragging = false;
+let yMin = 0, yMax = 0;
+
+function fitY() {
+  // sample the curve to pick a vertical window with margin
+  let lo = Infinity, hi = -Infinity;
+  for (let x = XMIN; x <= XMAX; x += 0.02) { const y = f(x); lo = Math.min(lo, y); hi = Math.max(hi, y); }
+  const m = (hi - lo) * 0.18;
+  yMin = lo - m; yMax = hi + m;
+}
+
+const PX = x => PAD + (x - XMIN) / (XMAX - XMIN) * (P.w - 2 * PAD);
+const PY = y => P.h - PAD - (y - yMin) / (yMax - yMin) * (P.h - 2 * PAD);
+const fromPX = px => XMIN + (px - PAD) / (P.w - 2 * PAD) * (XMAX - XMIN);
+
+// --- gradient descent: one honest step ---
+function descStep() {
+  if (!ball) return;
+  const g = dfdx(ball.x);
+  const alpha = +alphaSlider.value;
+  const step = -alpha * g;                       // downhill: minus the slope
+  ball.prevStep = ball.lastStep;
+  ball.lastStep = step;
+  ball.x += step;
+  ball.steps++;
+  ball.history.push(ball.x);
+  if (ball.history.length > 14) ball.history.shift();
+  // walked off the visible world = diverged
+  if (ball.x < XMIN - 2 || ball.x > XMAX + 2 || !isFinite(ball.x)) ball.escaped = true;
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (P.w - 2 * PAD) / 10;
+    const gy = PAD + i * (P.h - 2 * PAD) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, P.h - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(P.w - PAD, gy); ctx.stroke();
+  }
+  // x axis at y=0 if visible
+  if (yMin < 0 && yMax > 0) {
+    ctx.strokeStyle = '#2a2a38'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(PAD, PY(0)); ctx.lineTo(P.w - PAD, PY(0)); ctx.stroke();
+  }
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, P.w, P.h);
+  drawGrid();
+
+  // the curve
+  ctx.save();
+  ctx.shadowColor = 'rgba(76,201,240,0.4)'; ctx.shadowBlur = 8;
+  ctx.strokeStyle = '#4cc9f0'; ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  for (let px = PAD; px <= P.w - PAD; px += 2) {
+    const y = PY(f(fromPX(px)));
+    px === PAD ? ctx.moveTo(px, y) : ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  const h = Math.pow(10, +hSlider.value);
+  const slopeSec = (f(x0 + h) - f(x0)) / h;       // the secant the slider controls
+  const slopeTan = dfdx(x0);                       // the limit it converges to
+
+  // tangent line at the probe: y = f(x0) + f'(x0)(x - x0)
+  ctx.save();
+  ctx.shadowColor = 'rgba(247,37,133,0.5)'; ctx.shadowBlur = 10;
+  ctx.strokeStyle = '#f72585'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(PX(x0 - 1.6), PY(f(x0) - slopeTan * 1.6));
+  ctx.lineTo(PX(x0 + 1.6), PY(f(x0) + slopeTan * 1.6));
+  ctx.stroke();
+  ctx.restore();
+
+  // secant through (x0, f(x0)) and (x0+h, f(x0+h)) — extended a little
+  ctx.strokeStyle = 'rgba(251,191,36,0.85)'; ctx.lineWidth = 1.8;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.moveTo(PX(x0 - 1.2), PY(f(x0) - slopeSec * 1.2));
+  ctx.lineTo(PX(x0 + h + 1.2), PY(f(x0) + slopeSec * (h + 1.2)));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // the second secant point
+  ctx.fillStyle = '#fbbf24';
+  ctx.beginPath(); ctx.arc(PX(x0 + h), PY(f(x0 + h)), 4, 0, Math.PI * 2); ctx.fill();
+
+  // the draggable probe point
+  ctx.save();
+  ctx.shadowColor = 'rgba(76,201,240,0.9)'; ctx.shadowBlur = 12;
+  ctx.fillStyle = '#4cc9f0';
+  ctx.beginPath(); ctx.arc(PX(x0), PY(f(x0)), 7, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // the gradient-descent ball + its trail of past positions
+  if (ball) {
+    ball.history.forEach((bx, i) => {
+      ctx.fillStyle = `rgba(236,237,242,${0.08 + 0.4 * i / ball.history.length})`;
+      ctx.beginPath(); ctx.arc(PX(bx), PY(f(bx)), 3.5, 0, Math.PI * 2); ctx.fill();
+    });
+    const bx = Math.max(XMIN - 0.3, Math.min(XMAX + 0.3, ball.x));
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,255,255,0.8)'; ctx.shadowBlur = 14;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(PX(bx), PY(f(bx)), 7.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // arrow showing the next step the ball would take
+    const g = dfdx(ball.x), step = -(+alphaSlider.value) * g;
+    if (Math.abs(step) > 0.01 && !ball.escaped) {
+      ctx.strokeStyle = 'rgba(74,222,128,0.9)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(PX(bx), PY(f(bx)) - 16);
+      ctx.lineTo(PX(bx + step), PY(f(bx)) - 16); ctx.stroke();
+      ctx.fillStyle = 'rgba(74,222,128,0.9)';
+      const dir = Math.sign(step);
+      ctx.beginPath();
+      ctx.moveTo(PX(bx + step), PY(f(bx)) - 16);
+      ctx.lineTo(PX(bx + step) - 7 * dir, PY(f(bx)) - 20);
+      ctx.lineTo(PX(bx + step) - 7 * dir, PY(f(bx)) - 12);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  updateReadout(h, slopeSec, slopeTan);
+}
+
+function updateReadout(h, slopeSec, slopeTan) {
+  document.getElementById('hVal').textContent = h.toFixed(h < 0.01 ? 3 : 2);
+  document.getElementById('alphaVal').textContent = (+alphaSlider.value).toFixed(2);
+  document.getElementById('xVal').textContent = x0.toFixed(3);
+  document.getElementById('fxVal').textContent = f(x0).toFixed(3);
+  document.getElementById('secVal').textContent = slopeSec.toFixed(4);
+  document.getElementById('dfVal').textContent = slopeTan.toFixed(4);
+
+  const badge = document.getElementById('statusBadge');
+  const ann = document.getElementById('annotation');
+
+  if (ball) {
+    const g = dfdx(ball.x);
+    const oscillating = ball.prevStep !== undefined && ball.lastStep !== undefined &&
+      Math.sign(ball.prevStep) !== Math.sign(ball.lastStep) &&
+      Math.abs(ball.lastStep) >= Math.abs(ball.prevStep) * 0.95;
+    if (ball.escaped) {
+      badge.innerHTML = '<span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red)">✗ diverged — α too large</span>';
+      ann.style.borderLeftColor = 'var(--red)';
+      ann.innerHTML = `<b>Diverged.</b> Each step overshot the valley and landed somewhere steeper, so the next step was bigger still — after ${ball.steps} steps the ball left the chart. Lower α and drop it again.`;
+      playing = false; playBtn.textContent = '▶ Play';
+    } else if (Math.abs(g) < 2e-3) {
+      // converged at SOME critical point — but is it the best one?
+      let best = Infinity, bestX = 0;
+      for (let x = XMIN; x <= XMAX; x += 0.01) if (f(x) < best) { best = f(x); bestX = x; }
+      const stuck = f(ball.x) > best + 0.05;
+      badge.innerHTML = stuck
+        ? '<span class="badge" style="background:rgba(251,191,36,0.15);color:var(--amber)">⚠ stuck — local minimum</span>'
+        : '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ converged — f′(x) ≈ 0</span>';
+      ann.style.borderLeftColor = stuck ? 'var(--amber)' : 'var(--green)';
+      ann.innerHTML = stuck
+        ? `<b>Stuck.</b> The slope here is ~0 so the ball stops — but a deeper valley sits near x ≈ ${bestX.toFixed(2)} (f = ${best.toFixed(3)} vs ${f(ball.x).toFixed(3)} here). Descent only feels <i>local</i> slope; it has no idea the better valley exists. Drop the ball from a different start.`
+        : `<b>Converged</b> after ${ball.steps} steps at x = ${ball.x.toFixed(4)}. The derivative is ${g.toFixed(5)} ≈ 0: flat ground, nowhere downhill left to go. That is the definition of a minimum.`;
+      playing = false; playBtn.textContent = '▶ Play';
+    } else if (oscillating) {
+      badge.innerHTML = '<span class="badge" style="background:rgba(251,191,36,0.15);color:var(--amber)">⚠ overshooting</span>';
+      ann.style.borderLeftColor = 'var(--amber)';
+      ann.innerHTML = `<b>Step ${ball.steps}: overshoot.</b> The step −α·f′(x) = ${ball.lastStep.toFixed(3)} jumped clear across the valley — the slope flipped sign and the next step is no smaller. α = ${(+alphaSlider.value).toFixed(2)} is too aggressive for this curvature; the ball ping-pongs instead of settling.`;
+    } else {
+      ann.style.borderLeftColor = 'var(--cyan)';
+      badge.innerHTML = '';
+      ann.innerHTML = `<b>Step ${ball.steps}.</b> Slope f′(${ball.x.toFixed(2)}) = ${g.toFixed(3)} points ${g > 0 ? 'uphill to the right, so the ball steps <b>left</b>' : 'uphill to the left, so the ball steps <b>right</b>'} by α·|f′| = ${Math.abs(ball.lastStep ?? 0).toFixed(3)}. Steeper slope → bigger step; the steps shrink on their own as the valley flattens.`;
+    }
+  } else {
+    badge.innerHTML = '';
+    ann.style.borderLeftColor = 'var(--cyan)';
+    const gap = Math.abs(slopeSec - slopeTan);
+    ann.innerHTML = `<b>${FUNCS[fkey].name}</b> — ${FUNCS[fkey].blurb}. The amber secant through x and x+h has slope ${slopeSec.toFixed(3)}; the true tangent slope is ${slopeTan.toFixed(3)} (gap ${gap.toFixed(4)}). Shrink <b>h</b> and watch the gap vanish — the limit of that shrinking is the derivative. Then <b>drop the ball</b>.`;
+  }
+}
+
+// --- controls ---
+const hSlider = document.getElementById('h');
+const alphaSlider = document.getElementById('alpha');
+const playBtn = document.getElementById('playBtn');
+
+function pickFunc(key, btn) {
+  fkey = key; fitY(); ball = null; playing = false; playBtn.textContent = '▶ Play';
+  document.querySelectorAll('.controls button').forEach(b => b.classList.remove('primary'));
+  btn.classList.add('primary');
+  document.getElementById('dropBtn').classList.add('primary');
+}
+document.getElementById('fParab').onclick = e => pickFunc('parab', e.target);
+document.getElementById('fCubic').onclick = e => pickFunc('cubic', e.target);
+document.getElementById('fSinq').onclick  = e => pickFunc('sinq', e.target);
+
+document.getElementById('dropBtn').onclick = () => {
+  ball = { x: x0, steps: 0, history: [x0], lastStep: undefined, prevStep: undefined, escaped: false };
+};
+document.getElementById('stepBtn').onclick = () => { if (ball && !ball.escaped) descStep(); };
+playBtn.onclick = () => {
+  if (!ball) ball = { x: x0, steps: 0, history: [x0], escaped: false };
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+};
+
+// dragging the probe point along the curve
+plot.addEventListener('mousedown', e => { dragging = true; moveProbe(e); });
+window.addEventListener('mousemove', e => { if (dragging) moveProbe(e); });
+window.addEventListener('mouseup', () => dragging = false);
+function moveProbe(e) {
+  const r = plot.getBoundingClientRect();
+  x0 = Math.max(XMIN + 0.1, Math.min(XMAX - 0.1, fromPX(e.clientX - r.left)));
+}
+
+// --- render loop: descent ticks while playing ---
+function frame(t) {
+  if (playing && ball && !ball.escaped && t - lastTick > 220) {
+    lastTick = t;
+    descStep();
+  }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+fitY();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

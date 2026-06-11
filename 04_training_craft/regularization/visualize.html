@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Regularization — Overfitting You Can Dial</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  button.toggled {
+    background: linear-gradient(135deg, var(--magenta), #b5179e);
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(247,37,133,0.3);
+  }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 04 training craft</div>
+<h1>Regularization</h1>
+<p class="subtitle">A polynomial fit to noisy data, refit live as you move the sliders. Crank the <b>degree</b> until the curve threads every training dot — then watch the hollow <b>test</b> dots get betrayed. Now raise <b>λ</b> and feel the wiggle iron itself out. Flip <b>L1</b> to see the other penalty's signature: coefficients snapping to exactly zero.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="430"></canvas>
+    <div class="caption">filled cyan = train · hollow amber = test · dashed = the hidden ground truth · magenta = the model</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Sweep λ</button>
+      <button id="stepBtn">Step λ</button>
+      <button id="l1Btn">L1 off</button>
+      <button id="dataBtn">🎲 New data</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Polynomial degree <span class="val" id="degVal">9</span></label>
+        <input type="range" id="deg" min="1" max="15" step="1" value="9">
+      </div>
+      <div class="slider-row">
+        <label>Penalty strength λ <span class="val" id="lamVal">0</span></label>
+        <input type="range" id="lam" min="0" max="100" step="1" value="0">
+      </div>
+      <div class="hint">λ is on a log scale: the left edge is exactly 0 (no regularization), the right edge crushes everything but the mean. <b>Sweep λ</b> animates it for you.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">train RMSE</div><div class="v" style="color:var(--cyan)" id="trainVal">—</div></div>
+        <div class="stat"><div class="k">test RMSE</div><div class="v" style="color:var(--amber)" id="testVal">—</div></div>
+        <div class="stat"><div class="k">test ÷ train</div><div class="v" style="color:var(--magenta)" id="ratioVal">—</div></div>
+        <div class="stat"><div class="k">zero coeffs</div><div class="v" style="color:var(--green)" id="zeroVal">—</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">Train vs test error</div>
+      <canvas id="errbars" width="276" height="74"></canvas>
+    </div>
+
+    <div class="card">
+      <div class="chart-label">Coefficients w₀ … w_d <span id="coefMode"></span></div>
+      <canvas id="coefs" width="276" height="92"></canvas>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// RIDGE & LASSO ON A POLYNOMIAL BASIS — genuinely computed.
+//
+// Model: ŷ(x) = Σ_k w_k · T_k(2x−1), Chebyshev polynomials up to
+// the chosen degree. (Chebyshev instead of raw powers so the
+// normal equations stay numerically sane at degree 15 — it's
+// still exactly "polynomial-basis linear regression".)
+//
+// L2 (ridge):  min ‖y−Xw‖² + λ‖w‖²  →  closed form,
+//              solve (XᵀX + λI)w = Xᵀy by Gaussian elimination.
+// L1 (lasso):  min ‖y−Xw‖² + λ‖w‖₁  →  coordinate descent with
+//              the soft-threshold: weights that can't pay the λ
+//              tax are set to EXACTLY zero.
+// The intercept w₀ is never penalized, so λ→∞ collapses the fit
+// to the training mean, not to y=0.
+// ============================================================
+
+// --- seeded RNG (mulberry32) so the dataset is reproducible ---
+let seed = 7;
+function rng() {
+  seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function gauss() { // Box–Muller
+  const u1 = Math.max(rng(), 1e-9), u2 = rng();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+// --- the hidden truth: a smooth curve the model must recover ---
+function groundTruth(x) {
+  return 0.5 + 0.3 * Math.sin(2.1 * Math.PI * x) + 0.07 * Math.cos(5.5 * x);
+}
+
+// --- data: noisy samples, split into train (fit) and test (judge) ---
+let train = [], test = [];
+function makeData() {
+  const pts = [];
+  for (let i = 0; i < 42; i++) {
+    const x = 0.02 + 0.96 * rng();
+    pts.push({ x, y: groundTruth(x) + gauss() * 0.07 });
+  }
+  // deterministic shuffle, then split — the model NEVER sees test points
+  for (let i = pts.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [pts[i], pts[j]] = [pts[j], pts[i]];
+  }
+  train = pts.slice(0, 26);
+  test = pts.slice(26);
+}
+
+// --- Chebyshev polynomial features: T_0..T_d evaluated at 2x−1 ---
+function features(x, d) {
+  const t = 2 * x - 1;
+  const f = [1, t];
+  for (let k = 2; k <= d; k++) f.push(2 * t * f[k - 1] - f[k - 2]);
+  return f.slice(0, d + 1);
+}
+
+// --- Gaussian elimination with partial pivoting: solve A w = b ---
+function gaussSolve(A, b) {
+  const d = b.length;
+  const M = A.map((row, i) => row.concat([b[i]]));
+  for (let c = 0; c < d; c++) {
+    let piv = c;                            // pick the biggest pivot for stability
+    for (let r = c + 1; r < d; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = c + 1; r < d; r++) {       // eliminate below the pivot
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= d; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  const w = new Array(d).fill(0);
+  for (let r = d - 1; r >= 0; r--) {        // back-substitution
+    let s = M[r][d];
+    for (let k = r + 1; k < d; k++) s -= M[r][k] * w[k];
+    w[r] = s / M[r][r];
+  }
+  return w;
+}
+
+// --- ridge: the normal equations with λ on the diagonal ---
+function ridgeFit(deg, lam) {
+  const X = train.map(p => features(p.x, deg));
+  const d = deg + 1, n = train.length;
+  const A = [], b = [];
+  for (let i = 0; i < d; i++) {
+    A.push([]);
+    for (let j = 0; j < d; j++) {
+      let s = 0;
+      for (let k = 0; k < n; k++) s += X[k][i] * X[k][j];
+      // λ on the diagonal = the L2 penalty; skip the intercept (i=0);
+      // the 1e-9 floor keeps λ=0 solvable at degree 15
+      A[i].push(s + (i === j ? (i === 0 ? 1e-9 : lam + 1e-9) : 0));
+    }
+    let s = 0;
+    for (let k = 0; k < n; k++) s += X[k][i] * train[k].y;
+    b.push(s);
+  }
+  return gaussSolve(A, b);
+}
+
+// --- lasso: coordinate descent, soft-threshold makes exact zeros ---
+function lassoFit(deg, lam) {
+  const X = train.map(p => features(p.x, deg));
+  const d = deg + 1, n = train.length;
+  const z = [];                              // z_j = Σ_k x_kj² (denominators)
+  for (let j = 0; j < d; j++) { let s = 0; for (let k = 0; k < n; k++) s += X[k][j] ** 2; z.push(s); }
+  const w = new Array(d).fill(0);
+  const r = train.map(p => p.y);             // residual y − Xw (w starts at 0)
+  for (let sweep = 0; sweep < 120; sweep++) {
+    for (let j = 0; j < d; j++) {
+      // rho = what feature j "wants": its correlation with the residual
+      // (with its own current contribution added back)
+      let rho = 0;
+      for (let k = 0; k < n; k++) rho += X[k][j] * (r[k] + X[k][j] * w[j]);
+      const th = j === 0 ? 0 : lam / 2;      // soft-threshold (intercept untaxed)
+      let wj;
+      if (rho > th) wj = (rho - th) / z[j];
+      else if (rho < -th) wj = (rho + th) / z[j];
+      else wj = 0;                           // can't pay the tax → EXACTLY zero
+      const dw = wj - w[j];
+      if (dw !== 0) for (let k = 0; k < n; k++) r[k] -= X[k][j] * dw;
+      w[j] = wj;
+    }
+  }
+  return w;
+}
+
+function predict(w, x) {
+  const f = features(x, w.length - 1);
+  let s = 0;
+  for (let k = 0; k < w.length; k++) s += w[k] * f[k];
+  return s;
+}
+function rmse(w, pts) {
+  let s = 0;
+  for (const p of pts) s += (p.y - predict(w, p.x)) ** 2;
+  return Math.sqrt(s / pts.length);
+}
+
+// --- state ---
+let useL1 = false;
+let wFit = [];            // the true fitted coefficients (the math)
+let wDraw = [];           // eased display copy (the theater)
+let trainErr = 0, testErr = 0, zeroCount = 0;
+let playing = false, lastStep = 0;
+
+const degSlider = document.getElementById('deg');
+const lamSlider = document.getElementById('lam');
+// log-scale λ: slider 0 → exactly 0, else 10^(−4 … +2)
+const lambda = () => {
+  const s = parseInt(lamSlider.value);
+  return s === 0 ? 0 : Math.pow(10, -4 + 6 * s / 100);
+};
+
+function refit() {
+  const deg = parseInt(degSlider.value), lam = lambda();
+  wFit = useL1 ? lassoFit(deg, lam) : ridgeFit(deg, lam);
+  trainErr = rmse(wFit, train);
+  testErr = rmse(wFit, test);
+  zeroCount = wFit.filter(v => v === 0).length;
+  if (wDraw.length !== wFit.length) {       // degree changed: pad/truncate
+    const old = wDraw;
+    wDraw = wFit.map((_, i) => old[i] !== undefined ? old[i] : 0);
+  }
+  updateReadout();
+}
+
+// --- canvases ---
+const plot = document.getElementById('plot'), ctx = plot.getContext('2d');
+const eb = document.getElementById('errbars'), ectx = eb.getContext('2d');
+const cf = document.getElementById('coefs'), cctx = cf.getContext('2d');
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot), EB = hidpi(eb), CF = hidpi(cf);
+const PAD = 38;
+const X = x => PAD + x * (P.w - 2 * PAD);
+const Y = y => P.h - PAD - (y + 0.1) / 1.2 * (P.h - 2 * PAD); // y world ∈ [−0.1, 1.1]
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (P.w - 2 * PAD) / 10;
+    const gy = PAD + i * (P.h - 2 * PAD) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, P.h - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(P.w - PAD, gy); ctx.stroke();
+  }
+  ctx.strokeStyle = '#2a2a38'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(PAD, PAD - 12); ctx.lineTo(PAD, P.h - PAD); ctx.lineTo(P.w - PAD + 12, P.h - PAD);
+  ctx.stroke();
+}
+
+function draw() {
+  // ease displayed coefficients toward the fit — presentation only
+  for (let i = 0; i < wFit.length; i++) wDraw[i] += (wFit[i] - wDraw[i]) * 0.25;
+
+  ctx.clearRect(0, 0, P.w, P.h);
+  drawGrid();
+
+  // the hidden ground truth, dashed and faint
+  ctx.strokeStyle = 'rgba(154,154,176,0.45)'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  for (let i = 0; i <= 120; i++) {
+    const x = i / 120;
+    i === 0 ? ctx.moveTo(X(x), Y(groundTruth(x))) : ctx.lineTo(X(x), Y(groundTruth(x)));
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // the fitted polynomial, glowing magenta
+  ctx.save();
+  ctx.shadowColor = 'rgba(247,37,133,0.55)'; ctx.shadowBlur = 12;
+  ctx.strokeStyle = '#f72585'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 240; i++) {
+    const x = i / 240;
+    const y = Math.max(-0.1, Math.min(1.1, predict(wDraw, x)));
+    i === 0 ? ctx.moveTo(X(x), Y(y)) : ctx.lineTo(X(x), Y(y));
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // train: filled cyan dots
+  for (const p of train) {
+    ctx.save();
+    ctx.shadowColor = 'rgba(76,201,240,0.8)'; ctx.shadowBlur = 7;
+    ctx.fillStyle = '#4cc9f0';
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  // test: hollow amber dots — the model has never seen these
+  for (const p of test) {
+    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 4.2, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  drawErrBars();
+  drawCoefs();
+  requestAnimationFrame(draw);
+}
+
+function drawErrBars() {
+  ectx.clearRect(0, 0, EB.w, EB.h);
+  const maxE = 0.45;                         // fixed scale so motion is comparable
+  const bars = [
+    { label: 'train', v: trainErr, color: '#4cc9f0' },
+    { label: 'test', v: testErr, color: '#fbbf24' },
+  ];
+  bars.forEach((bz, i) => {
+    const y = 12 + i * 32, bw = Math.min(1, bz.v / maxE) * (EB.w - 92);
+    ectx.fillStyle = '#101018';
+    ectx.fillRect(46, y, EB.w - 92, 14);
+    ectx.fillStyle = bz.color;
+    ectx.fillRect(46, y, Math.max(2, bw), 14);
+    ectx.fillStyle = '#9a9ab0'; ectx.font = '10.5px sans-serif'; ectx.textAlign = 'right';
+    ectx.fillText(bz.label, 42, y + 11);
+    ectx.textAlign = 'left'; ectx.fillStyle = bz.color; ectx.font = '600 11px ui-monospace, monospace';
+    ectx.fillText(bz.v.toFixed(3), 50 + (EB.w - 92), y + 11);
+  });
+}
+
+function drawCoefs() {
+  cctx.clearRect(0, 0, CF.w, CF.h);
+  const d = wDraw.length, mid = CF.h / 2;
+  cctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  cctx.beginPath(); cctx.moveTo(0, mid); cctx.lineTo(CF.w, mid); cctx.stroke();
+  const bw = CF.w / Math.max(d, 4);
+  const scale = (CF.h / 2 - 8) / 0.6;        // ±0.6 fills the strip
+  for (let j = 0; j < d; j++) {
+    const x = j * bw + bw * 0.18, w2 = bw * 0.64;
+    const isZero = wFit[j] === 0;
+    const h = Math.max(-mid + 4, Math.min(mid - 4, -wDraw[j] * scale));
+    if (isZero) {
+      // an EXACT zero — lasso's signature, mark it green
+      cctx.strokeStyle = '#4ade80'; cctx.lineWidth = 1.4;
+      cctx.beginPath(); cctx.arc(x + w2 / 2, mid, 3, 0, Math.PI * 2); cctx.stroke();
+    } else {
+      cctx.fillStyle = j === 0 ? '#5d5d72' : (useL1 ? '#f72585' : '#4cc9f0');
+      cctx.fillRect(x, Math.min(mid, mid + h), w2, Math.abs(h) || 1);
+    }
+  }
+}
+
+function updateReadout() {
+  document.getElementById('trainVal').textContent = trainErr.toFixed(3);
+  document.getElementById('testVal').textContent = testErr.toFixed(3);
+  const ratio = testErr / Math.max(trainErr, 1e-6);
+  document.getElementById('ratioVal').textContent = ratio.toFixed(1) + '×';
+  document.getElementById('zeroVal').textContent = useL1 ? zeroCount : '— (L2)';
+  document.getElementById('coefMode').textContent = useL1 ? '· L1 / lasso' : '· L2 / ridge';
+
+  const deg = parseInt(degSlider.value), lam = lambda();
+  const ann = document.getElementById('annotation');
+  if (deg >= 9 && lam < 1e-3 && ratio > 2.5) {
+    ann.style.borderLeftColor = 'var(--red)';
+    ann.innerHTML = `<b>Memorization.</b> Degree ${deg}, λ≈0: the wiggle between train dots is memorized noise, not signal — test error is <b>${ratio.toFixed(1)}×</b> train. The model bought a perfect past at the price of the future. Raise λ and watch the wiggle pay rent.`;
+  } else if (lam > 5) {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>Over-regularized.</b> λ = ${lam.toPrecision(2)} taxes the weights so hard the curve is collapsing toward the flat train mean (the untaxed intercept). Train error ${trainErr.toFixed(3)} and test error ${testErr.toFixed(3)} are both bad — this is underfitting by penalty.`;
+  } else if (deg <= 2) {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>Underfit by capacity.</b> Degree ${deg} can't bend enough to follow the truth — train and test errors are high <i>together</i> (${trainErr.toFixed(3)} vs ${testErr.toFixed(3)}). No λ can fix this; regularization only removes capacity, never adds it.`;
+  } else if (ratio < 1.8 && testErr < 0.12) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Sweet spot.</b> Test RMSE ${testErr.toFixed(3)}, only ${ratio.toFixed(1)}× train — the fit tracks the dashed truth, not the noise. ${useL1 ? `L1 has zeroed <b>${zeroCount}</b> of ${wFit.length} coefficients: a simpler model that generalizes.` : 'L2 shrank every coefficient a little; none are exactly zero — check the bar strip.'}`;
+  } else {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Degree ${deg}, λ = ${lam === 0 ? '0' : lam.toPrecision(2)} (${useL1 ? 'L1' : 'L2'}).</b> Test error is ${ratio.toFixed(1)}× train. ${useL1 ? `Lasso's soft-threshold has set <b>${zeroCount}</b> coefficients to exactly zero (green rings below).` : 'Ridge shrinks all coefficients smoothly — small but never exactly zero.'} Sweep λ to find where test error bottoms out.`;
+  }
+}
+
+// --- controls ---
+degSlider.oninput = () => { document.getElementById('degVal').textContent = degSlider.value; refit(); };
+lamSlider.oninput = () => {
+  const l = lambda();
+  document.getElementById('lamVal').textContent = l === 0 ? '0' : l.toPrecision(2);
+  refit();
+};
+
+const l1Btn = document.getElementById('l1Btn');
+l1Btn.onclick = () => {
+  useL1 = !useL1;
+  l1Btn.textContent = useL1 ? 'L1 on' : 'L1 off';
+  l1Btn.className = useL1 ? 'toggled' : '';
+  refit();
+};
+
+document.getElementById('dataBtn').onclick = () => { makeData(); refit(); };
+document.getElementById('stepBtn').onclick = () => stepLambda();
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  playing = !playing;
+  if (playing && parseInt(lamSlider.value) >= 100) lamSlider.value = 0;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Sweep λ';
+};
+
+function stepLambda() {
+  // one notch up the log-λ ladder; wraps at the top so Play loops the story
+  let v = parseInt(lamSlider.value) + 2;
+  if (v > 100) { v = 100; playing = false; playBtn.textContent = '▶ Sweep λ'; }
+  lamSlider.value = v;
+  lamSlider.oninput();
+}
+
+// --- render loop with λ-sweep playback ---
+function frame(t) {
+  if (playing && t - lastStep > 110) { lastStep = t; stepLambda(); }
+  requestAnimationFrame(frame);
+}
+
+makeData();
+degSlider.oninput(); lamSlider.oninput();
+requestAnimationFrame(draw);
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

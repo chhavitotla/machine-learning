@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Decision Trees — Watch CART Carve the Plane</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 760px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  #plot { cursor: crosshair; }
+  #tree { cursor: default; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 01 supervised learning</div>
+<h1>Decision Trees</h1>
+<p class="subtitle">Every click of <b>Split</b> runs one real round of CART: scan every threshold on both features at every leaf, pick the cut that removes the most Gini impurity, carve the plane. Left: the regions being carved. Right: the tree growing itself. <b>Hover a tree node</b> to see exactly which patch of the plane it owns — and watch the late splits start chasing noise.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="430" height="430"></canvas>
+    <div class="caption">tinted rectangles = the tree's current regions · brightness = purity</div>
+  </div>
+
+  <div class="card stage">
+    <canvas id="tree" width="470" height="430"></canvas>
+    <div class="caption">hover any node to highlight its region · ◆ = question, ● = verdict</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="splitBtn">Split</button>
+      <button id="playBtn">▶ Auto-grow</button>
+      <button id="pruneBtn">✂ Prune back</button>
+      <button id="resetBtn">↺ Reset</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Max depth <span class="val" id="depthVal">4</span></label>
+        <input type="range" id="maxDepth" min="1" max="7" step="1" value="4">
+      </div>
+      <div class="slider-row">
+        <label>Auto-grow speed <span class="val" id="speedVal">1.5 splits/s</span></label>
+        <input type="range" id="speed" min="1" max="8" step="0.5" value="1.5">
+      </div>
+      <div class="hint">Crank max depth to 7 and auto-grow: the last splits isolate single points — gain ≈ 0.01 rectangles that are pure memorization. That's overfitting, drawn live.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">splits made</div><div class="v" id="splitsVal">0</div></div>
+        <div class="stat"><div class="k">leaves</div><div class="v" style="color:var(--cyan)" id="leavesVal">1</div></div>
+        <div class="stat"><div class="k">train accuracy</div><div class="v" style="color:var(--green)" id="accVal">—</div></div>
+        <div class="stat"><div class="k">mean leaf gini</div><div class="v" style="color:var(--amber)" id="giniVal">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// CART — CLASSIFICATION AND REGRESSION TREES (classification)
+// At each leaf: try every threshold on every feature, score by
+//   gain = Gini(parent) - weighted Gini(children)
+// where Gini = 1 - Σ p_k² (probability two random draws disagree).
+// Each "Split" greedily executes the single best cut anywhere
+// in the tree. No backtracking, no global plan — pure greed.
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+const treeCanvas = document.getElementById('tree');
+const tctx = treeCanvas.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+const T = hidpi(treeCanvas);
+const PAD = 36;
+
+// --- deterministic dataset: two interleaved crescents, seeded PRNG ---
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(42);
+function gauss() {
+  return Math.sqrt(-2 * Math.log(rng() + 1e-12)) * Math.cos(2 * Math.PI * rng());
+}
+
+const data = [];
+(function makeMoons() {
+  // class 0: upper crescent, class 1: lower crescent, interleaved so no
+  // single straight cut separates them — the tree must ask several questions
+  for (let i = 0; i < 40; i++) {
+    const a = Math.PI * rng();
+    data.push({ x: Math.cos(a) + gauss() * 0.13, y: Math.sin(a) + gauss() * 0.13, c: 0 });
+    data.push({ x: 1 - Math.cos(a) + gauss() * 0.13, y: 0.45 - Math.sin(a) + gauss() * 0.13, c: 1 });
+  }
+  // squeeze into [0,1]²
+  for (const p of data) {
+    p.x = (p.x + 1.45) / 3.9;
+    p.y = (p.y + 0.95) / 2.9;
+  }
+})();
+
+// --- the tree ---
+let root, history, splitCount, lastSplit, playing = false, lastTick = 0, hoverNode = null;
+const FEAT = ['x₁', 'x₂'];
+
+function giniOf(idx) {
+  // 1 - p₀² - p₁²: zero when pure, 0.5 at a 50/50 coin flip
+  if (idx.length === 0) return 0;
+  const p1 = idx.filter(i => data[i].c === 1).length / idx.length;
+  return 1 - p1 * p1 - (1 - p1) * (1 - p1);
+}
+
+function bestSplit(idx) {
+  // the heart of CART: exhaustive scan over both features, thresholds
+  // placed at midpoints between consecutive sorted values
+  const parent = giniOf(idx);
+  let best = null;
+  for (let f = 0; f < 2; f++) {
+    const vals = [...new Set(idx.map(i => f === 0 ? data[i].x : data[i].y))].sort((a, b) => a - b);
+    for (let k = 0; k + 1 < vals.length; k++) {
+      const t = (vals[k] + vals[k + 1]) / 2;
+      const L = idx.filter(i => (f === 0 ? data[i].x : data[i].y) <= t);
+      const R = idx.filter(i => (f === 0 ? data[i].x : data[i].y) > t);
+      // weighted impurity after the cut — a tiny pure child barely counts
+      const weighted = (L.length * giniOf(L) + R.length * giniOf(R)) / idx.length;
+      const gain = parent - weighted;
+      if (!best || gain > best.gain) best = { f, t, gain, L, R, parent, weighted };
+    }
+  }
+  return best && best.gain > 1e-12 ? best : null;
+}
+
+function makeLeaf(idx, depth, region) {
+  const n1 = idx.filter(i => data[i].c === 1).length;
+  return {
+    leaf: true, idx, depth, region,
+    label: 2 * n1 >= idx.length ? 1 : 0,
+    n1, gini: giniOf(idx),
+    best: bestSplit(idx),       // precomputed so we know each leaf's potential
+    born: performance.now(),
+  };
+}
+
+function reset() {
+  root = makeLeaf(data.map((_, i) => i), 0, { x0: 0, x1: 1, y0: 0, y1: 1 });
+  history = []; splitCount = 0; lastSplit = null; hoverNode = null;
+}
+
+function leaves(node = root, out = []) {
+  if (node.leaf) out.push(node);
+  else { leaves(node.left, out); leaves(node.right, out); }
+  return out;
+}
+
+function doSplit() {
+  // global greed: among all leaves shallower than max depth, execute the
+  // single split with the highest impurity reduction anywhere in the tree
+  const maxD = parseInt(depthSlider.value);
+  const candidates = leaves().filter(l => l.best && l.depth < maxD);
+  if (candidates.length === 0) return false;
+  const node = candidates.reduce((a, b) => (a.best.gain >= b.best.gain ? a : b));
+  const { f, t, gain, L, R, parent, weighted } = node.best;
+  const r = node.region;
+  node.leaf = false;
+  node.f = f; node.t = t; node.gain = gain; node.born = performance.now();
+  // children inherit a sliced piece of the parent's rectangle
+  node.left = makeLeaf(L, node.depth + 1,
+    f === 0 ? { x0: r.x0, x1: t, y0: r.y0, y1: r.y1 } : { x0: r.x0, x1: r.x1, y0: r.y0, y1: t });
+  node.right = makeLeaf(R, node.depth + 1,
+    f === 0 ? { x0: t, x1: r.x1, y0: r.y0, y1: r.y1 } : { x0: r.x0, x1: r.x1, y0: t, y1: r.y1 });
+  history.push(node);
+  splitCount++;
+  lastSplit = { node, f, t, gain, parent, weighted };
+  return true;
+}
+
+function prune() {
+  // undo the most recent split: collapse that node back into a leaf
+  const node = history.pop();
+  if (!node) return;
+  const idx = node.left ? [...gatherIdx(node)] : node.idx;
+  const region = node.region;
+  const depth = node.depth;
+  for (const k of Object.keys(node)) delete node[k];
+  Object.assign(node, makeLeaf(idx, depth, region));
+  splitCount--;
+  lastSplit = null;
+  hoverNode = null;
+}
+function gatherIdx(node) {
+  return node.leaf ? node.idx : [...gatherIdx(node.left), ...gatherIdx(node.right)];
+}
+
+function accuracy() {
+  // each leaf predicts its majority class; count how many points agree
+  let hits = 0;
+  for (const l of leaves()) hits += Math.max(l.n1, l.idx.length - l.n1);
+  return hits / data.length;
+}
+
+// --- scatter drawing ---
+const SX = x => PAD + x * (P.w - 2 * PAD);
+const SY = y => P.h - PAD - y * (P.h - 2 * PAD);
+
+function drawScatter(now) {
+  ctx.clearRect(0, 0, P.w, P.h);
+
+  // leaf regions: each rectangle is one leaf's jurisdiction, tinted by its
+  // majority class, opacity scaled by purity (1 - gini/0.5)
+  for (const l of leaves()) {
+    const r = l.region;
+    const purity = 1 - l.gini / 0.5;
+    const pop = Math.min((now - l.born) / 350, 1);
+    const a = (0.06 + 0.16 * purity) * pop;
+    ctx.fillStyle = l.label === 1 ? `rgba(247,37,133,${a})` : `rgba(76,201,240,${a})`;
+    ctx.fillRect(SX(r.x0), SY(r.y1), SX(r.x1) - SX(r.x0), SY(r.y0) - SY(r.y1));
+  }
+
+  // faint blueprint grid over the regions
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = PAD + i * (P.w - 2 * PAD) / 10;
+    const gy = PAD + i * (P.h - 2 * PAD) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, PAD); ctx.lineTo(gx, P.h - PAD); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD, gy); ctx.lineTo(P.w - PAD, gy); ctx.stroke();
+  }
+
+  // split lines: every internal node contributes one cut inside its region
+  drawCuts(root, now);
+
+  // hovered tree node: spotlight its rectangle
+  if (hoverNode) {
+    const r = hoverNode.region;
+    ctx.save();
+    ctx.shadowColor = 'rgba(251,191,36,0.8)'; ctx.shadowBlur = 16;
+    ctx.strokeStyle = 'var(--amber)';
+    ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2.5;
+    ctx.strokeRect(SX(r.x0), SY(r.y1), SX(r.x1) - SX(r.x0), SY(r.y0) - SY(r.y1));
+    ctx.fillStyle = 'rgba(251,191,36,0.07)';
+    ctx.fillRect(SX(r.x0), SY(r.y1), SX(r.x1) - SX(r.x0), SY(r.y0) - SY(r.y1));
+    ctx.restore();
+  }
+
+  // axes
+  ctx.strokeStyle = '#2a2a38'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(PAD, PAD - 10); ctx.lineTo(PAD, P.h - PAD); ctx.lineTo(P.w - PAD + 10, P.h - PAD);
+  ctx.stroke();
+  ctx.fillStyle = '#5d5d72'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('x₁', P.w - PAD + 12, P.h - PAD + 4);
+  ctx.fillText('x₂', PAD - 10, PAD - 16);
+
+  // data points
+  const inHover = hoverNode ? new Set(gatherIdx(hoverNode)) : null;
+  for (let i = 0; i < data.length; i++) {
+    const p = data[i];
+    const col = p.c === 1 ? '#f72585' : '#4cc9f0';
+    const dim = inHover && !inHover.has(i);
+    ctx.save();
+    ctx.globalAlpha = dim ? 0.22 : 1;
+    ctx.shadowColor = col; ctx.shadowBlur = dim ? 0 : 7;
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), 4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawCuts(node, now) {
+  if (node.leaf) return;
+  const r = node.region;
+  const pop = Math.min((now - node.born) / 350, 1);
+  const isLast = lastSplit && lastSplit.node === node;
+  ctx.save();
+  ctx.globalAlpha = pop;
+  ctx.shadowColor = isLast ? 'rgba(251,191,36,0.9)' : 'rgba(255,255,255,0.35)';
+  ctx.shadowBlur = isLast ? 12 : 5;
+  ctx.strokeStyle = isLast ? '#fbbf24' : 'rgba(255,255,255,0.65)';
+  ctx.lineWidth = isLast ? 2.4 : 1.4;
+  ctx.beginPath();
+  if (node.f === 0) {   // vertical cut at x₁ = t, spanning only this region
+    ctx.moveTo(SX(node.t), SY(r.y0)); ctx.lineTo(SX(node.t), SY(r.y1));
+  } else {              // horizontal cut at x₂ = t
+    ctx.moveTo(SX(r.x0), SY(node.t)); ctx.lineTo(SX(r.x1), SY(node.t));
+  }
+  ctx.stroke();
+  ctx.restore();
+  drawCuts(node.left, now);
+  drawCuts(node.right, now);
+}
+
+// --- tree diagram drawing ---
+let nodeHits = [];   // screen positions for hover detection
+
+function layoutTree() {
+  // leaves take consecutive horizontal slots; parents sit centered above
+  const ls = leaves();
+  const slot = (T.w - 50) / Math.max(ls.length, 1);
+  let next = 0;
+  const depthOf = n => 30 + n * Math.min(62, (T.h - 70) / Math.max(maxTreeDepth(root), 1));
+  (function assign(node) {
+    node._y = depthOf(node.depth);
+    if (node.leaf) { node._x = 25 + slot * (next + 0.5); next++; }
+    else { assign(node.left); assign(node.right); node._x = (node.left._x + node.right._x) / 2; }
+  })(root);
+}
+function maxTreeDepth(node) { return node.leaf ? node.depth : Math.max(maxTreeDepth(node.left), maxTreeDepth(node.right)); }
+
+function drawTree(now) {
+  tctx.clearRect(0, 0, T.w, T.h);
+  layoutTree();
+  nodeHits = [];
+
+  // edges first, so nodes sit on top
+  (function edges(node) {
+    if (node.leaf) return;
+    for (const child of [node.left, node.right]) {
+      const pop = Math.min((now - child.born) / 350, 1);
+      tctx.save();
+      tctx.globalAlpha = 0.5 * pop;
+      tctx.strokeStyle = '#3a3a4c'; tctx.lineWidth = 1.5;
+      tctx.beginPath(); tctx.moveTo(node._x, node._y + 8); tctx.lineTo(child._x, child._y - 8); tctx.stroke();
+      tctx.restore();
+      edges(child);
+    }
+    // ≤ / > labels on the branches
+    tctx.fillStyle = '#5d5d72'; tctx.font = '600 9px sans-serif'; tctx.textAlign = 'center';
+    tctx.fillText('≤', (node._x + node.left._x) / 2 - 4, (node._y + node.left._y) / 2);
+    tctx.fillText('>', (node._x + node.right._x) / 2 + 4, (node._y + node.right._y) / 2);
+  })(root);
+
+  (function nodes(node) {
+    const pop = Math.min((now - node.born) / 350, 1);
+    const hovered = node === hoverNode;
+    nodeHits.push({ node, x: node._x, y: node._y });
+    tctx.save();
+    tctx.globalAlpha = pop;
+    if (node.leaf) {
+      // verdict: a glowing dot in the majority class color, sized by purity
+      const col = node.label === 1 ? '#f72585' : '#4cc9f0';
+      tctx.shadowColor = col; tctx.shadowBlur = hovered ? 16 : 8;
+      tctx.fillStyle = col;
+      tctx.beginPath(); tctx.arc(node._x, node._y, hovered ? 9 : 7, 0, Math.PI * 2); tctx.fill();
+      tctx.shadowBlur = 0;
+      tctx.fillStyle = '#0b0b10'; tctx.font = '700 8px sans-serif'; tctx.textAlign = 'center';
+      tctx.fillText(String(node.idx.length), node._x, node._y + 2.5);
+      if (node.gini > 0.01) {   // impure leaf: amber warning ring
+        tctx.strokeStyle = 'rgba(251,191,36,0.6)'; tctx.lineWidth = 1.2;
+        tctx.beginPath(); tctx.arc(node._x, node._y, (hovered ? 9 : 7) + 2.5, 0, Math.PI * 2); tctx.stroke();
+      }
+    } else {
+      // question: diamond with "feature ≤ threshold" and the gain it bought
+      const isLast = lastSplit && lastSplit.node === node;
+      tctx.shadowColor = isLast ? 'rgba(251,191,36,0.8)' : 'rgba(76,201,240,0.4)';
+      tctx.shadowBlur = hovered || isLast ? 14 : 6;
+      tctx.fillStyle = hovered ? '#262638' : '#1b1b27';
+      tctx.strokeStyle = isLast ? '#fbbf24' : (hovered ? '#fbbf24' : '#34344a');
+      tctx.lineWidth = 1.5;
+      const s = 8;
+      tctx.beginPath();
+      tctx.moveTo(node._x, node._y - s); tctx.lineTo(node._x + s, node._y);
+      tctx.lineTo(node._x, node._y + s); tctx.lineTo(node._x - s, node._y);
+      tctx.closePath(); tctx.fill(); tctx.stroke();
+      tctx.shadowBlur = 0;
+      tctx.fillStyle = '#ecedf2'; tctx.font = '600 10px sans-serif'; tctx.textAlign = 'center';
+      tctx.fillText(`${FEAT[node.f]} ≤ ${node.t.toFixed(2)}`, node._x, node._y - 13);
+      tctx.fillStyle = node.gain < 0.03 ? '#f87171' : '#4ade80';
+      tctx.font = '600 9px sans-serif';
+      tctx.fillText(`gain ${node.gain.toFixed(2)}`, node._x, node._y + 20);
+      nodes(node.left); nodes(node.right);
+    }
+    tctx.restore();
+  })(root);
+}
+
+// --- readouts & annotation ---
+function updateReadout() {
+  const ls = leaves();
+  document.getElementById('splitsVal').textContent = splitCount;
+  document.getElementById('leavesVal').textContent = ls.length;
+  document.getElementById('accVal').textContent = (accuracy() * 100).toFixed(1) + '%';
+  const meanGini = ls.reduce((s, l) => s + l.gini * l.idx.length, 0) / data.length;
+  document.getElementById('giniVal').textContent = meanGini.toFixed(3);
+
+  const maxD = parseInt(depthSlider.value);
+  const canGrow = ls.some(l => l.best && l.depth < maxD);
+  const badge = document.getElementById('statusBadge');
+  badge.innerHTML = !canGrow && splitCount > 0
+    ? '<span class="badge" style="background:rgba(74,222,128,0.15);color:var(--green)">✓ fully grown at this depth</span>'
+    : '';
+
+  const ann = document.getElementById('annotation');
+  if (hoverNode) {
+    ann.style.borderLeftColor = 'var(--amber)';
+    const n = hoverNode;
+    if (n.leaf) {
+      ann.innerHTML = `<b>Leaf</b> at depth ${n.depth}, owning the highlighted rectangle: <b>${n.idx.length} points</b> (${n.n1} magenta, ${n.idx.length - n.n1} cyan), Gini <b>${n.gini.toFixed(3)}</b>. It predicts class ${n.label} for <i>any</i> future point landing in that patch.` +
+        (n.best ? ` Its best available split would gain ${n.best.gain.toFixed(3)}.` : ' No split can improve it — it is pure or unsplittable.');
+    } else {
+      ann.innerHTML = `<b>Question node</b>: "${FEAT[n.f]} ≤ ${n.t.toFixed(2)}?" — this single comparison carved the highlighted rectangle in two, buying Gini gain <b>${n.gain.toFixed(3)}</b>.`;
+    }
+  } else if (lastSplit) {
+    const { f, t, gain, parent, weighted } = lastSplit;
+    ann.style.borderLeftColor = gain < 0.03 ? 'var(--red)' : 'var(--cyan)';
+    ann.innerHTML = `<b>Split #${splitCount}.</b> Of every possible threshold on both features, the greediest cut was <b>${FEAT[f]} ≤ ${t.toFixed(2)}</b>: Gini ${parent.toFixed(2)} → ${weighted.toFixed(2)}, gain <b>${gain.toFixed(2)}</b>.` +
+      (gain < 0.03
+        ? ' <b style="color:var(--red)">⚠ That gain is nearly zero</b> — this cut is fencing off noise, not structure. A real tree would be pruned here (or stopped by min-samples).'
+        : ' The two new leaves each precomputed their own best next cut, and the greediest one anywhere goes next.');
+  } else {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = '<b>One leaf, zero questions.</b> The whole plane predicts the majority class; Gini ≈ 0.5 means a coin flip. Hit <b>Split</b> — CART will scan all ~160 candidate thresholds and make the single most impurity-reducing cut.';
+  }
+}
+
+// --- controls ---
+const depthSlider = document.getElementById('maxDepth');
+const speedSlider = document.getElementById('speed');
+depthSlider.oninput = () => document.getElementById('depthVal').textContent = depthSlider.value;
+speedSlider.oninput = () => document.getElementById('speedVal').textContent = speedSlider.value + ' splits/s';
+depthSlider.oninput(); speedSlider.oninput();
+
+document.getElementById('splitBtn').onclick = () => doSplit();
+document.getElementById('pruneBtn').onclick = () => prune();
+document.getElementById('resetBtn').onclick = () => { reset(); playing = false; playBtn.textContent = '▶ Auto-grow'; };
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Auto-grow';
+};
+
+treeCanvas.addEventListener('mousemove', e => {
+  const r = treeCanvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  hoverNode = null;
+  let bestD = 18;
+  for (const h of nodeHits) {
+    const d = Math.hypot(h.x - mx, h.y - my);
+    if (d < bestD) { bestD = d; hoverNode = h.node; }
+  }
+});
+treeCanvas.addEventListener('mouseleave', () => { hoverNode = null; });
+
+// --- render loop ---
+function frame(t) {
+  if (playing && t - lastTick > 1000 / parseFloat(speedSlider.value)) {
+    lastTick = t;
+    if (!doSplit()) { playing = false; playBtn.textContent = '▶ Auto-grow'; }
+  }
+  drawScatter(t);
+  drawTree(t);
+  updateReadout();
+  requestAnimationFrame(frame);
+}
+
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

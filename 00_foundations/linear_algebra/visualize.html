@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Linear Algebra — Matrices Transform Space</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; cursor: crosshair; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+  .matrix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 00 foundations</div>
+<h1>Matrices Transform Space</h1>
+<p class="subtitle">A matrix is a machine that warps the whole plane at once. Its columns are simply <b>where the two unit arrows land</b>. Set the four entries of M, then <b>scrub or play</b> the morph from identity to M — and watch the unit square's area report the determinant, and the amber eigenvector arrows mark the directions M refuses to rotate.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="500"></canvas>
+    <div class="caption">cyan = î (column 1) · magenta = ĵ (column 2) · green square = warped unit square (red when flipped) · amber = eigenvector lines</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play morph</button>
+      <button id="stepBtn">Step</button>
+      <button id="resetBtn">↺ Rewind</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>morph t · identity → M <span class="val" id="tVal">1.00</span></label>
+        <input type="range" id="t" min="0" max="1" step="0.01" value="1">
+      </div>
+      <div class="matrix-grid" style="margin-top:14px">
+        <div class="slider-row"><label>a <span class="val" id="aVal">1.00</span></label><input type="range" id="a" min="-2" max="2" step="0.05" value="1"></div>
+        <div class="slider-row" style="margin:0"><label>b <span class="val" id="bVal">0.50</span></label><input type="range" id="b" min="-2" max="2" step="0.05" value="0.5"></div>
+        <div class="slider-row" style="margin:0"><label>c <span class="val" id="cVal">0.00</span></label><input type="range" id="c" min="-2" max="2" step="0.05" value="0"></div>
+        <div class="slider-row" style="margin:0"><label>d <span class="val" id="dVal">1.00</span></label><input type="range" id="d" min="-2" max="2" step="0.05" value="1"></div>
+      </div>
+      <div class="hint">M = [[a, b], [c, d]]. Column 1 = (a, c) is where (1,0) lands; column 2 = (b, d) is where (0,1) lands.</div>
+    </div>
+
+    <div class="card controls" style="gap:6px">
+      <button id="pRot">Rotation</button>
+      <button id="pShear">Shear</button>
+      <button id="pScale">Scale</button>
+      <button id="pRefl">Reflection</button>
+      <button id="pSing">Singular</button>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">det(M)</div><div class="v" id="detVal">—</div></div>
+        <div class="stat"><div class="k">square area ×</div><div class="v" style="color:var(--amber)" id="areaVal">—</div></div>
+        <div class="stat wide"><div class="k">eigenvalues</div><div class="v" style="font-size:14px" id="eigVal">—</div></div>
+      </div>
+      <div id="statusBadge"></div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// MATRICES TRANSFORM SPACE
+// M(t) = (1-t)·I + t·M   — a straight-line morph from the
+// do-nothing transformation to the user's matrix. Every grid
+// point, vector, and square corner is pushed through M(t).
+// det = ad - bc          — signed area scale of the unit square
+// eigen: λ² - tr·λ + det = 0, eigenvector solves (M - λI)v = 0
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+const CX = P.w / 2, CY = P.h / 2, S = 62;   // pixels per unit, origin at center
+
+// --- state ---
+const sliders = {};
+['a','b','c','d','t'].forEach(id => sliders[id] = document.getElementById(id));
+let playing = false;
+
+// target matrix from the sliders
+const target = () => [[+sliders.a.value, +sliders.b.value], [+sliders.c.value, +sliders.d.value]];
+
+// the morph: blend identity into M entrywise. At t=0 nothing has
+// happened; at t=1 the full transformation has been applied.
+function lerpM(M, t) {
+  return [[1 + t * (M[0][0] - 1), t * M[0][1]],
+          [t * M[1][0],           1 + t * (M[1][1] - 1)]];
+}
+
+const apply = (M, v) => [M[0][0] * v[0] + M[0][1] * v[1], M[1][0] * v[0] + M[1][1] * v[1]];
+const det = M => M[0][0] * M[1][1] - M[0][1] * M[1][0];
+
+// Eigen-pairs of a 2x2 via the characteristic polynomial
+// λ² - (a+d)λ + det = 0. Real iff the discriminant tr² - 4·det ≥ 0.
+// An eigenvector of λ solves (a-λ)x + b·y = 0 → v = (b, λ-a),
+// falling back to (λ-d, c) when that row is all zeros.
+function eigen(M) {
+  const tr = M[0][0] + M[1][1], dt = det(M);
+  const disc = tr * tr - 4 * dt;
+  if (disc < 0) return { real: false, disc };
+  const sq = Math.sqrt(disc);
+  return {
+    real: true, disc,
+    pairs: [(tr + sq) / 2, (tr - sq) / 2].map(lam => {
+      let v;
+      if (Math.abs(M[0][1]) > 1e-9 || Math.abs(M[0][0] - lam) > 1e-9) v = [M[0][1], lam - M[0][0]];
+      else v = [lam - M[1][1], M[1][0]];
+      const n = Math.hypot(v[0], v[1]) || 1;
+      return { lam, v: [v[0] / n, v[1] / n] };
+    })
+  };
+}
+
+// --- mapping math-plane → pixels (y up) ---
+const px = v => [CX + v[0] * S, CY - v[1] * S];
+
+function line(M, p, q, color, width) {
+  const [x1, y1] = px(apply(M, p)), [x2, y2] = px(apply(M, q));
+  ctx.strokeStyle = color; ctx.lineWidth = width;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+
+function arrow(M, v, color, label) {
+  const [x0, y0] = px([0, 0]), [x1, y1] = px(apply(M, v));
+  const ang = Math.atan2(y1 - y0, x1 - x0);
+  ctx.save();
+  ctx.shadowColor = color; ctx.shadowBlur = 10;
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - 10 * Math.cos(ang - 0.4), y1 - 10 * Math.sin(ang - 0.4));
+  ctx.lineTo(x1 - 10 * Math.cos(ang + 0.4), y1 - 10 * Math.sin(ang + 0.4));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+  if (label) {
+    ctx.fillStyle = color; ctx.font = '700 13px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(label, x1 + 14 * Math.cos(ang), y1 + 14 * Math.sin(ang) - 2);
+  }
+}
+
+function draw() {
+  const M = target();
+  const t = +sliders.t.value;
+  const Mt = lerpM(M, t);
+  const dNow = det(Mt), dFull = det(M);
+
+  ctx.clearRect(0, 0, P.w, P.h);
+
+  // static reference grid (the space that was)
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = -8; i <= 8; i++) {
+    ctx.beginPath(); ctx.moveTo(CX + i * S, 0); ctx.lineTo(CX + i * S, P.h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, CY - i * S); ctx.lineTo(P.w, CY - i * S); ctx.stroke();
+  }
+
+  // the warped grid: every line of the lattice pushed through M(t).
+  // Grid lines stay straight and parallel — that IS linearity.
+  const EXT = 8;
+  for (let i = -EXT; i <= EXT; i++) {
+    const axis = i === 0;
+    const col = axis ? 'rgba(76,201,240,0.45)' : 'rgba(76,201,240,0.13)';
+    line(Mt, [i, -EXT], [i, EXT], col, axis ? 1.6 : 1);
+    line(Mt, [-EXT, i], [EXT, i], col, axis ? 1.6 : 1);
+  }
+
+  // the unit square — its area is |det| of the morphed matrix,
+  // and its color flips when det goes negative (space mirrored)
+  const corners = [[0,0],[1,0],[1,1],[0,1]].map(p => px(apply(Mt, p)));
+  ctx.beginPath(); ctx.moveTo(...corners[0]);
+  corners.slice(1).forEach(c => ctx.lineTo(...c)); ctx.closePath();
+  const flipped = dNow < 0;
+  ctx.fillStyle = flipped ? 'rgba(248,113,113,0.22)' : 'rgba(74,222,128,0.18)';
+  ctx.strokeStyle = flipped ? 'rgba(248,113,113,0.85)' : 'rgba(74,222,128,0.8)';
+  ctx.lineWidth = 1.8; ctx.fill(); ctx.stroke();
+  // area label at the square's centroid
+  const cen = corners.reduce((s, c) => [s[0] + c[0] / 4, s[1] + c[1] / 4], [0, 0]);
+  ctx.fillStyle = flipped ? '#f87171' : '#4ade80';
+  ctx.font = '700 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('area ' + Math.abs(dNow).toFixed(2), cen[0], cen[1] + 4);
+
+  // eigenvector lines of the FULL matrix M (the destination's invariant
+  // directions), drawn as amber arrows both ways
+  const eig = eigen(M);
+  if (eig.real && t > 0.02) {
+    for (const { lam, v } of eig.pairs) {
+      ctx.save(); ctx.globalAlpha = Math.min(1, t * 1.5);
+      ctx.strokeStyle = 'rgba(251,191,36,0.25)'; ctx.lineWidth = 1;
+      const [ex1, ey1] = px([v[0] * 8, v[1] * 8]), [ex2, ey2] = px([-v[0] * 8, -v[1] * 8]);
+      ctx.beginPath(); ctx.moveTo(ex1, ey1); ctx.lineTo(ex2, ey2); ctx.stroke();
+      // the eigenvector arrow stretches by λ as the morph plays:
+      // length 1 at t=0, length λ at t=1 (passing through 0 if λ < 0)
+      const scale = 1 + (lam - 1) * t;
+      arrow([[1, 0], [0, 1]], [v[0] * scale, v[1] * scale], '#fbbf24', 'λ=' + lam.toFixed(2));
+      ctx.restore();
+    }
+  }
+
+  // basis vectors: the columns of M(t), the whole story of the matrix
+  arrow(Mt, [1, 0], '#4cc9f0', 'î');
+  arrow(Mt, [0, 1], '#f72585', 'ĵ');
+  // one bystander vector so you can see a generic point ride along
+  arrow(Mt, [1.5, 1], 'rgba(236,237,242,0.55)', 'v');
+
+  updateReadout(M, Mt, t, eig, dNow, dFull);
+}
+
+function updateReadout(M, Mt, t, eig, dNow, dFull) {
+  document.getElementById('tVal').textContent = t.toFixed(2);
+  ['a','b','c','d'].forEach(id =>
+    document.getElementById(id + 'Val').textContent = (+sliders[id].value).toFixed(2));
+
+  const detEl = document.getElementById('detVal');
+  detEl.textContent = dFull.toFixed(3);
+  detEl.style.color = dFull < 0 ? 'var(--red)' : (Math.abs(dFull) < 0.05 ? 'var(--amber)' : 'var(--green)');
+  document.getElementById('areaVal').textContent = Math.abs(dNow).toFixed(3);
+
+  const eigEl = document.getElementById('eigVal');
+  if (eig.real) {
+    eigEl.style.color = 'var(--amber)';
+    eigEl.textContent = `λ₁ = ${eig.pairs[0].lam.toFixed(3)},  λ₂ = ${eig.pairs[1].lam.toFixed(3)}`;
+  } else {
+    eigEl.style.color = 'var(--faint)';
+    eigEl.textContent = 'complex — M rotates every direction';
+  }
+
+  const badge = document.getElementById('statusBadge');
+  if (Math.abs(dFull) < 0.05)
+    badge.innerHTML = '<span class="badge" style="background:rgba(251,191,36,0.15);color:var(--amber)">⚠ near-singular — plane collapsing to a line</span>';
+  else if (dFull < 0)
+    badge.innerHTML = '<span class="badge" style="background:rgba(248,113,113,0.15);color:var(--red)">⤧ orientation flipped — det &lt; 0</span>';
+  else
+    badge.innerHTML = '';
+
+  const ann = document.getElementById('annotation');
+  const pct = Math.round(t * 100);
+  if (Math.abs(dFull) < 0.05) {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>Collapse.</b> det(M) ≈ 0, so the unit square's area is being crushed toward zero — at t=1 the whole 2D plane lands on a single line. Two different inputs now share one output: information is destroyed, and no inverse can recover it. This is exactly why (XᵀX)⁻¹ explodes with collinear features.`;
+  } else if (dFull < 0) {
+    ann.style.borderLeftColor = 'var(--red)';
+    ann.innerHTML = `<b>Morph ${pct}%.</b> det(M) = ${dFull.toFixed(2)} is <b>negative</b>: watch î and ĵ swap their handedness — space passes through itself like a page being turned. The square turns red the instant the flip happens. Area still scales by |det| = ${Math.abs(dFull).toFixed(2)}.`;
+  } else if (!eig.real) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Morph ${pct}%.</b> The discriminant tr² − 4·det = ${eig.disc.toFixed(2)} is negative, so the eigenvalues are <b>complex</b> — there is no direction this matrix merely stretches. Every arrow gets rotated; that's the signature of rotation-like maps. No amber arrows to draw.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Morph ${pct}%.</b> Grid lines stay straight, parallel, evenly spaced — that's what "linear" means. The square's area is ×${Math.abs(dNow).toFixed(2)} right now (det of the morphed matrix). The amber directions are eigenvectors: M stretches them by λ₁ = ${eig.pairs[0].lam.toFixed(2)} and λ₂ = ${eig.pairs[1].lam.toFixed(2)} without turning them.`;
+  }
+}
+
+// --- controls ---
+Object.values(sliders).forEach(s => s.oninput = () => {});  // values read each frame
+
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  if (+sliders.t.value >= 1) sliders.t.value = 0;   // replay from the start
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play morph';
+};
+document.getElementById('stepBtn').onclick = () => {
+  sliders.t.value = Math.min(1, +sliders.t.value + 0.1);
+};
+document.getElementById('resetBtn').onclick = () => { sliders.t.value = 0; playing = false; playBtn.textContent = '▶ Play morph'; };
+
+function setM(a, b, c, d) {
+  sliders.a.value = a; sliders.b.value = b; sliders.c.value = c; sliders.d.value = d;
+  sliders.t.value = 0; playing = true; playBtn.textContent = '⏸ Pause';
+}
+const r = Math.SQRT1_2;  // cos45 = sin45
+document.getElementById('pRot').onclick   = () => setM(r, -r, r, r);          // rotate 45°, det = 1
+document.getElementById('pShear').onclick = () => setM(1, 0.8, 0, 1);         // shear, det = 1
+document.getElementById('pScale').onclick = () => setM(1.6, 0, 0, 0.6);       // stretch x, squash y
+document.getElementById('pRefl').onclick  = () => setM(0, 1, 1, 0);           // mirror across y = x, det = -1
+document.getElementById('pSing').onclick  = () => setM(1, 0.5, 2, 1);         // det = 0: collapse
+
+// --- render loop: eased morph playback ---
+function frame() {
+  if (playing) {
+    // ease toward t = 1: big moves early, gentle landing
+    const t = +sliders.t.value;
+    const nt = t + Math.max(0.004, (1 - t) * 0.045);
+    sliders.t.value = Math.min(1, nt);
+    if (+sliders.t.value >= 1) { playing = false; playBtn.textContent = '▶ Play morph'; }
+  }
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

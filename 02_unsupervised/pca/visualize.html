@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PCA — Watch a Cloud Flatten Onto Its Best Line</title>
+<style>
+  /* ============ ml-zero-to-hero design system ============ */
+  :root {
+    --bg: #0b0b10;
+    --panel: #14141c;
+    --panel-border: #23232f;
+    --text: #ecedf2;
+    --dim: #9a9ab0;
+    --faint: #5d5d72;
+    --cyan: #4cc9f0;
+    --blue: #4361ee;
+    --magenta: #f72585;
+    --amber: #fbbf24;
+    --green: #4ade80;
+    --red: #f87171;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    background:
+      radial-gradient(900px 500px at 15% -10%, rgba(67,97,238,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 0%, rgba(247,37,133,0.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px;
+  }
+  .eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 10px;
+  }
+  .eyebrow b { color: var(--cyan); font-weight: 700; }
+  h1 {
+    font-size: 30px; font-weight: 750; letter-spacing: -0.025em; text-align: center;
+    background: linear-gradient(100deg, #fff 20%, #b8c6ff 60%, #7ea4ff);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    color: var(--dim); font-size: 14.5px; margin: 12px 0 28px; max-width: 720px;
+    text-align: center; line-height: 1.65;
+  }
+  .subtitle b { color: var(--text); }
+  .layout { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent 40%), var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .stage { padding: 14px; }
+  canvas { display: block; border-radius: 10px; }
+  .caption { font-size: 11.5px; color: var(--faint); margin-top: 10px; text-align: center; letter-spacing: 0.01em; }
+  .side { width: 312px; display: flex; flex-direction: column; gap: 14px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #1d1d28; color: var(--text);
+    border: 1px solid #2c2c3a; border-radius: 10px;
+    padding: 10px 15px; font-size: 13px; font-weight: 650; cursor: pointer;
+    transition: transform .12s ease, background .15s, box-shadow .15s;
+  }
+  button:hover { background: #262633; transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  button.primary {
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    color: #fff; border: none;
+    box-shadow: 0 4px 18px rgba(76,201,240,0.28);
+  }
+  button.primary:hover { box-shadow: 0 6px 24px rgba(76,201,240,0.42); }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .slider-row + .slider-row { margin-top: 14px; }
+  .slider-row label { display: flex; justify-content: space-between; color: var(--dim); font-weight: 500; }
+  .slider-row .val { color: var(--cyan); font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 4px;
+    border-radius: 2px; background: #2a2a38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--blue));
+    box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; border: none;
+    background: var(--cyan); box-shadow: 0 0 10px rgba(76,201,240,0.5); cursor: pointer;
+  }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: #101018; border: 1px solid #1f1f2b; border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .stat .v { font-family: var(--mono); font-size: 16px; font-weight: 650; }
+  .stat.wide { grid-column: 1 / -1; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 99px; margin-top: 6px; }
+  .annotation { font-size: 12.5px; color: var(--dim); line-height: 1.7; border-left: 3px solid var(--cyan); padding-left: 12px; min-height: 76px; }
+  .annotation b { color: var(--text); }
+  .chart-label { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="eyebrow"><b>ml-zero-to-hero</b> · 02 unsupervised learning</div>
+<h1>Principal Component Analysis</h1>
+<p class="subtitle">A correlated cloud has a favorite direction — the axis along which it spreads the most. PCA finds it by eigendecomposing the covariance matrix: <b>PC1</b> (cyan) points along maximum variance, <b>PC2</b> (magenta) along what's left. <b>Drag the projection slider</b> and watch every point slide onto the PC1 line — 2D collapsing to 1D while losing as little as mathematically possible.</p>
+
+<div class="layout">
+  <div class="card stage">
+    <canvas id="plot" width="580" height="460"></canvas>
+    <div class="caption">arrow lengths ∝ √eigenvalue (the std along each component) · faint stems = what projection throws away</div>
+  </div>
+
+  <div class="side">
+    <div class="card controls">
+      <button class="primary" id="playBtn">▶ Play projection</button>
+      <button id="stepBtn">Step +10%</button>
+      <button id="dataBtn">🎲 New data</button>
+    </div>
+
+    <div class="card">
+      <div class="slider-row">
+        <label>Project onto PC1 <span class="val" id="projVal">0%</span></label>
+        <input type="range" id="proj" min="0" max="100" step="1" value="0">
+      </div>
+      <div class="slider-row">
+        <label>Correlation ρ (for new data) <span class="val" id="rhoVal">0.80</span></label>
+        <input type="range" id="rho" min="-0.95" max="0.95" step="0.05" value="0.8">
+      </div>
+      <div class="slider-row">
+        <label>Rotate data <span class="val" id="rotVal">0°</span></label>
+        <input type="range" id="rot" min="0" max="180" step="1" value="0">
+      </div>
+      <div class="hint">Drag <b>rotate data</b> and watch the eigenvectors re-aim instantly — PCA has no preferred axes, it reads direction straight out of the covariance. Set ρ ≈ 0 and PC1 barely beats PC2: nothing worth compressing.</div>
+    </div>
+
+    <div class="card">
+      <div class="stat-grid">
+        <div class="stat"><div class="k">λ1 (var on PC1)</div><div class="v" style="color:var(--cyan)" id="l1Val">—</div></div>
+        <div class="stat"><div class="k">λ2 (var on PC2)</div><div class="v" style="color:var(--magenta)" id="l2Val">—</div></div>
+        <div class="stat"><div class="k">PC1 explains</div><div class="v" style="color:var(--green)" id="evrVal">—</div></div>
+        <div class="stat"><div class="k">reconstruction MSE</div><div class="v" style="color:var(--amber)" id="errVal">—</div></div>
+      </div>
+    </div>
+
+    <div class="card annotation" id="annotation"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ============================================================
+// PCA IN 2D, EXACTLY
+//  1. center the data:           p ← p − mean
+//  2. covariance matrix:         C = [[cxx, cxy], [cxy, cyy]]
+//  3. closed-form 2x2 eigen:     λ = (tr ± √(tr² − 4·det)) / 2
+//     eigenvector for λ:         v = (cxy, λ − cxx), normalized
+//  4. eigenvalues = variance along each component; projecting onto
+//     PC1 keeps λ1 of the variance and throws away exactly λ2.
+// ============================================================
+
+const plot = document.getElementById('plot');
+const ctx = plot.getContext('2d');
+
+function hidpi(canvas) {
+  const r = window.devicePixelRatio || 1;
+  const w = canvas.width, h = canvas.height;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  canvas.width = w * r; canvas.height = h * r;
+  canvas.getContext('2d').scale(r, r);
+  return { w, h };
+}
+const P = hidpi(plot);
+
+// --- state ---
+let basePoints = [];      // raw generated data (data units, centered-ish)
+let points = [];          // base points after the "rotate data" transform
+let mean = { x: 0, y: 0 };
+let eig = null;           // { l1, l2, v1: [x,y], v2: [x,y] }
+let arrowGrow = 0;        // 0→1 eased: arrows grow out of the mean on new data
+let arrowBorn = 0;
+let playing = false;
+
+// --- data: correlated 2D gaussian via cholesky-style construction ---
+function gauss() {
+  const u1 = Math.random(), u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+function makeData() {
+  const rho = parseFloat(rhoSlider.value);
+  basePoints = [];
+  for (let i = 0; i < 220; i++) {
+    // x ~ N(0,1); y = ρ·x + √(1−ρ²)·z gives corr(x,y) = ρ exactly
+    const x = gauss();
+    const y = rho * x + Math.sqrt(1 - rho * rho) * gauss();
+    basePoints.push({ x: x * 1.5, y: y * 1.0 });   // unequal scales: more interesting ellipse
+  }
+  arrowBorn = performance.now();
+  applyRotation();
+}
+
+function applyRotation() {
+  // "rotate data" rotates the underlying cloud — the eigenvectors must follow,
+  // because they are computed FROM the rotated data, not remembered.
+  const th = parseFloat(rotSlider.value) * Math.PI / 180;
+  const c = Math.cos(th), s = Math.sin(th);
+  points = basePoints.map(p => ({ x: c * p.x - s * p.y, y: s * p.x + c * p.y }));
+  recomputePCA();
+}
+
+// --- the algorithm ---
+function recomputePCA() {
+  const n = points.length;
+  mean.x = points.reduce((a, p) => a + p.x, 0) / n;
+  mean.y = points.reduce((a, p) => a + p.y, 0) / n;
+  // covariance matrix of the centered data
+  let cxx = 0, cxy = 0, cyy = 0;
+  for (const p of points) {
+    const dx = p.x - mean.x, dy = p.y - mean.y;
+    cxx += dx * dx; cxy += dx * dy; cyy += dy * dy;
+  }
+  cxx /= n; cxy /= n; cyy /= n;
+  // closed-form symmetric 2x2 eigendecomposition (characteristic polynomial)
+  const tr = cxx + cyy, det = cxx * cyy - cxy * cxy;
+  const gap = Math.sqrt(Math.max(tr * tr - 4 * det, 0));
+  const l1 = (tr + gap) / 2, l2 = (tr - gap) / 2;
+  let v1;
+  if (Math.abs(cxy) > 1e-12) v1 = [cxy, l1 - cxx];
+  else v1 = cxx >= cyy ? [1, 0] : [0, 1];
+  const norm = Math.hypot(v1[0], v1[1]);
+  v1 = [v1[0] / norm, v1[1] / norm];
+  const v2 = [-v1[1], v1[0]];               // perpendicular — symmetric matrices have orthogonal eigenvectors
+  eig = { l1, l2, v1, v2, cxx, cxy, cyy };
+}
+
+// projection of p onto the PC1 line through the mean
+function projectPC1(p) {
+  const t = (p.x - mean.x) * eig.v1[0] + (p.y - mean.y) * eig.v1[1];
+  return { x: mean.x + t * eig.v1[0], y: mean.y + t * eig.v1[1] };
+}
+
+// reconstruction MSE at projection fraction f: each point has moved f of the
+// way along its perpendicular, so the squared loss is f²·(distance to line)²
+function reconstructionMSE(f) {
+  let s = 0;
+  for (const p of points) {
+    const q = projectPC1(p);
+    s += (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
+  }
+  return f * f * s / points.length;
+}
+
+// --- mapping: data units → pixels (fixed scale so rotation doesn't rescale) ---
+const SCALE = 52, CX = () => P.w / 2, CY = () => P.h / 2;
+const X = x => CX() + (x - mean.x) * SCALE;
+const Y = y => CY() - (y - mean.y) * SCALE;
+
+function drawArrow(vx, vy, len, color) {
+  const x0 = CX(), y0 = CY();
+  const x1 = x0 + vx * len * SCALE, y1 = y0 - vy * len * SCALE;
+  ctx.save();
+  ctx.shadowColor = color; ctx.shadowBlur = 12;
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+  const ang = Math.atan2(y1 - y0, x1 - x0);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x1 - 11 * Math.cos(ang - 0.42), y1 - 11 * Math.sin(ang - 0.42));
+  ctx.lineTo(x1 - 11 * Math.cos(ang + 0.42), y1 - 11 * Math.sin(ang + 0.42));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, P.w, P.h);
+
+  // faint blueprint grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 10; i++) {
+    const gx = 12 + i * (P.w - 24) / 10, gy = 12 + i * (P.h - 24) / 10;
+    ctx.beginPath(); ctx.moveTo(gx, 12); ctx.lineTo(gx, P.h - 12); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(12, gy); ctx.lineTo(P.w - 12, gy); ctx.stroke();
+  }
+
+  const f = parseInt(projSlider.value) / 100;   // projection fraction 0→1
+  arrowGrow = Math.min((now - arrowBorn) / 900, 1);
+  const ease = 1 - Math.pow(1 - arrowGrow, 3);  // cubic ease-out for the arrow growth
+
+  // the PC1 axis line that points will flatten onto
+  ctx.strokeStyle = 'rgba(76,201,240,0.22)'; ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(CX() - eig.v1[0] * 400, CY() + eig.v1[1] * 400);
+  ctx.lineTo(CX() + eig.v1[0] * 400, CY() - eig.v1[1] * 400);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // points: each drawn at lerp(original, projection, f) — visibly flattening.
+  // The faint amber stem is the perpendicular being discarded.
+  for (const p of points) {
+    const q = projectPC1(p);
+    const dx = p.x + (q.x - p.x) * f, dy = p.y + (q.y - p.y) * f;
+    if (f > 0.02 && f < 0.98) {
+      ctx.strokeStyle = 'rgba(251,191,36,0.18)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(X(dx), Y(dy)); ctx.lineTo(X(q.x), Y(q.y)); ctx.stroke();
+    }
+    ctx.save();
+    ctx.shadowColor = 'rgba(76,201,240,0.7)'; ctx.shadowBlur = 6;
+    ctx.fillStyle = '#4cc9f0';
+    ctx.beginPath(); ctx.arc(X(dx), Y(dy), 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // the principal components, growing out of the mean: length ∝ √λ (one std)
+  drawArrow(eig.v1[0], eig.v1[1], 2 * Math.sqrt(eig.l1) * ease, '#4cc9f0');
+  drawArrow(eig.v2[0], eig.v2[1], 2 * Math.sqrt(eig.l2) * ease, '#f72585');
+  ctx.fillStyle = '#4cc9f0'; ctx.font = '700 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('PC1', CX() + eig.v1[0] * 2 * Math.sqrt(eig.l1) * SCALE * ease + 8,
+                      CY() - eig.v1[1] * 2 * Math.sqrt(eig.l1) * SCALE * ease);
+  ctx.fillStyle = '#f72585';
+  ctx.fillText('PC2', CX() + eig.v2[0] * 2 * Math.sqrt(eig.l2) * SCALE * ease + 8,
+                      CY() - eig.v2[1] * 2 * Math.sqrt(eig.l2) * SCALE * ease);
+
+  // mean point
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(CX(), CY(), 3, 0, Math.PI * 2); ctx.fill();
+
+  updateReadout(f);
+}
+
+function updateReadout(f) {
+  const total = eig.l1 + eig.l2;
+  const evr = 100 * eig.l1 / total;
+  document.getElementById('l1Val').textContent = eig.l1.toFixed(3);
+  document.getElementById('l2Val').textContent = eig.l2.toFixed(3);
+  document.getElementById('evrVal').textContent = evr.toFixed(1) + '%';
+  document.getElementById('errVal').textContent = reconstructionMSE(f).toFixed(4);
+
+  const ann = document.getElementById('annotation');
+  if (f === 0) {
+    ann.style.borderLeftColor = 'var(--cyan)';
+    ann.innerHTML = `<b>Full 2D.</b> The covariance eigendecomposition says variance splits ${evr.toFixed(1)}% / ${(100 - evr).toFixed(1)}% between PC1 and PC2. PC1 is the single direction that captures the most spread — equivalently, the line with the smallest total squared perpendicular distance. Maximizing kept variance <i>is</i> minimizing lost information.`;
+  } else if (f === 1) {
+    ann.style.borderLeftColor = 'var(--green)';
+    ann.innerHTML = `<b>Fully projected.</b> Every point now lives on a 1D line: one number each instead of two — 50% compression. The reconstruction MSE equals λ2 = ${eig.l2.toFixed(3)} exactly: what you lose is precisely the variance that lived along PC2, and no other line through the data loses less.`;
+  } else {
+    ann.style.borderLeftColor = 'var(--amber)';
+    ann.innerHTML = `<b>${Math.round(f * 100)}% projected.</b> Each point slides along its perpendicular (the amber stems) toward the PC1 line. Reconstruction error grows as f²·λ2 = ${reconstructionMSE(f).toFixed(4)} — the perpendicular coordinate is the only thing being thrown away.`;
+  }
+}
+
+// --- controls ---
+const projSlider = document.getElementById('proj');
+const rhoSlider = document.getElementById('rho');
+const rotSlider = document.getElementById('rot');
+projSlider.oninput = () => { document.getElementById('projVal').textContent = projSlider.value + '%'; };
+rhoSlider.oninput = () => { document.getElementById('rhoVal').textContent = parseFloat(rhoSlider.value).toFixed(2); };
+rotSlider.oninput = () => { document.getElementById('rotVal').textContent = rotSlider.value + '°'; applyRotation(); };
+projSlider.oninput(); rhoSlider.oninput();
+
+document.getElementById('dataBtn').onclick = () => makeData();
+document.getElementById('stepBtn').onclick = () => {
+  projSlider.value = Math.min(100, parseInt(projSlider.value) + 10);
+  projSlider.oninput();
+};
+const playBtn = document.getElementById('playBtn');
+playBtn.onclick = () => {
+  if (parseInt(projSlider.value) >= 100) projSlider.value = 0;   // replay from flat
+  playing = !playing;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play projection';
+};
+
+// --- render loop: play sweeps the projection slider 0 → 100 ---
+function frame(now) {
+  if (playing) {
+    const v = parseInt(projSlider.value) + 1;
+    projSlider.value = Math.min(100, v);
+    projSlider.oninput();
+    if (v >= 100) { playing = false; playBtn.textContent = '▶ Play projection'; }
+  }
+  draw(now);
+  requestAnimationFrame(frame);
+}
+
+makeData();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
