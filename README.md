@@ -131,8 +131,3 @@ Contributions are genuinely welcome — this repo gets better one visualization 
 
 **How:** fork → branch → PR. One topic per PR. Open an issue first for new topics so we don't duplicate work. See [CONTRIBUTING.md](CONTRIBUTING.md) for the style rules.
 
----
-
-## License
-
-MIT. Use it for anything. If it helps you pass an interview, a ⭐ is the thank-you.
