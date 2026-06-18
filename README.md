@@ -4,7 +4,6 @@
 
 ![GitHub stars](https://img.shields.io/github/stars/your-username/ml-zero-to-hero?style=flat-square&color=f5c518)
 ![GitHub forks](https://img.shields.io/github/forks/your-username/ml-zero-to-hero?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)
 ![Last Commit](https://img.shields.io/github/last-commit/your-username/ml-zero-to-hero?style=flat-square)
 
